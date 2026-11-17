@@ -13,6 +13,8 @@ const QUOTA_MS = 3 * 60 * 1000;
 const STALE_MS = 10 * 60 * 1000;
 const PROVIDERS = [["claude", "Claude"], ["codex", "Codex"]];
 const GAUGES = [["cpu", "CPU"], ["ram", "RAM"], ["gpu", "GPU"]];
+// Limit windows left out of the panel, by provider and window length in seconds.
+const HIDDEN_WINDOWS = { codex: [5 * 3600] };
 
 // Fixed heights, so the block can be sized to fit what it shows.
 const PAD_X = 14;
@@ -142,9 +144,13 @@ export default class UsageLimits extends View {
     });
   }
 
+  windows(key) {
+    const hidden = HIDDEN_WINDOWS[key] ?? [];
+    return (this.data[key]?.windows ?? []).filter((w) => !hidden.includes(w.seconds));
+  }
+
   rows(key) {
-    const p = this.data[key];
-    return p?.windows?.length ? p.windows.length : 1;
+    return this.windows(key).length || 1;
   }
 
   height(collapsed) {
@@ -194,12 +200,13 @@ export default class UsageLimits extends View {
   quotaRows(key, name) {
     const t = theme();
     const p = this.data[key];
-    if (!p?.windows?.length) {
+    const windows = this.windows(key);
+    if (!windows.length) {
       return [h_flex().id(`row-${key}`).h(ROW_H).gap(8).items_center()
         .child(div().w(LABEL_W).flex_none().text_color(t.foreground).child(name))
         .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(p ? p.error ?? "no limits reported" : "loading…"))];
     }
-    return p.windows.map((w) => h_flex().id(`row-${key}-${w.label}`).h(ROW_H).gap(8).items_center()
+    return windows.map((w) => h_flex().id(`row-${key}-${w.label}`).h(ROW_H).gap(8).items_center()
       .tooltip(`${name} ${w.label}: ${w.percent}% used${w.resets ? `, ${w.resets}` : ""}${p.stale ? `\nNot updated: ${p.stale}` : ""}`)
       .child(h_flex().w(LABEL_W).flex_none().gap(5).items_center()
         .child(div().truncate().text_color(t.foreground).child(`${name} ${windowName(w)}`))
@@ -211,7 +218,7 @@ export default class UsageLimits extends View {
 
   railRow(key, name) {
     const t = theme();
-    const windows = this.data[key]?.windows ?? [];
+    const windows = this.windows(key);
     const top = windows.length ? Math.max(...windows.map((w) => w.percent)) : null;
     const tip = windows.map((w) => `${name} ${windowName(w)}: ${w.percent}%`).join("\n") || `${name}: ${this.data[key]?.error ?? "loading"}`;
     return v_flex().id(`rail-${key}`).h(RAIL_ROW_H).w(36).items_center().justify_center().rounded(6)
