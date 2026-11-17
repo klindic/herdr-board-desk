@@ -1,0 +1,7 @@
+# Written by Herdr on every start.
+gpui-kit.d.ts
+jsconfig.json
+# Personal settings: copy config.example.json to config.json.
+mods/*/config.json
+__pycache__/
+.DS_Store

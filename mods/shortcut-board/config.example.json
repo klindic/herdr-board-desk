@@ -1,0 +1,6 @@
+{
+  "team": "Your team name",
+  "columns": ["Unstarted", "In Progress", "In Review", "Done"],
+  "token_file": "~/.config/shortcut-token",
+  "demo": false
+}
