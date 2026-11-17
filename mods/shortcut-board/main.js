@@ -225,7 +225,7 @@ export default class ShortcutBoard extends View {
   columnWidth(count) {
     // Sized as if the story, the right panel and the Files panel were all closed,
     // so opening any of them only adds sideways scroll and never narrows the cards.
-    const width = (this.size?.width ?? 0) + this.sidePanelsWidth();
+    const width = this.baseWidth ?? 0;
     if (!width || !count) return 280;
     const fit = (width - 2 * PAD_X + SCROLL_GUTTER - (count - 1) * GAP) / count;
     return Math.floor(Math.max(COLUMN_MIN, Math.min(COLUMN_MAX, fit)));
@@ -415,7 +415,14 @@ export default class ShortcutBoard extends View {
       .when(!open, (el) => el.flex_1())
       .child(header).child(body);
 
-    return h_flex().id("root").size_full().on_size_change((size, cx) => { this.size = size; cx.notify(); })
+    return h_flex().id("root").size_full()
+      // Measured only here, when the board's size has really changed: a panel shows in layout()
+      // a frame before the board shrinks, and mixing the two for that frame made the cards flash.
+      .on_size_change((size, cx) => {
+        this.size = size;
+        const base = size.width + this.sidePanelsWidth();
+        if (base !== this.baseWidth) { this.baseWidth = base; cx.notify(); }
+      })
       // A click anywhere but a card or the open story clears the selection.
       .on_click((_e, cx) => { if (this.selected !== null) { this.selected = null; cx.notify(); } })
       .font_family(FONT).gap(PANE_GAP)
