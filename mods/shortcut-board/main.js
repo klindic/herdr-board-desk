@@ -1,6 +1,6 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex, TextView } from "gpui-base";
-import { theme, exec, appHome, checking } from "herdr";
+import { theme, exec, appHome, checking, layout } from "herdr";
 
 const REFRESH_MS = 2 * 60 * 1000;
 const DETAIL_FRESH_MS = 60 * 1000;
@@ -56,6 +56,18 @@ function age(seconds) {
   if (hours < 24) return `${hours}h`;
   const days = Math.round(hours / 24);
   return days < 60 ? `${days}d` : `${Math.round(days / 30)}mo`;
+}
+
+// Panels that open beside the board, with the divider or gap that comes with each.
+const SIDE_PANELS = [["right-panel", 1], ["panel", 8]];
+
+function find(node, id) {
+  if (node?.id === id) return node;
+  for (const child of node?.children ?? []) {
+    const found = find(child, id);
+    if (found) return found;
+  }
+  return null;
 }
 
 const clip = (text) => (text.length > TITLE_MAX ? `${text.slice(0, TITLE_MAX - 1).trimEnd()}…` : text);
@@ -200,9 +212,20 @@ export default class ShortcutBoard extends View {
         .children(c.prs.map((p) => this.linkButton(`sc-${c.id}-pr-${p.repo}-${p.number}`, `PR #${p.number}`, p.url))));
   }
 
+  sidePanelsWidth() {
+    const root = layout();
+    let extra = 0;
+    for (const [id, spacing] of SIDE_PANELS) {
+      const node = find(root, id);
+      if (node && !node.hidden && node.size?.px) extra += node.size.px + spacing;
+    }
+    return extra;
+  }
+
   columnWidth(count) {
-    // Sized from the whole board, open story or not, so opening one only adds sideways scroll.
-    const width = this.size?.width ?? 0;
+    // Sized as if the story, the right panel and the Files panel were all closed,
+    // so opening any of them only adds sideways scroll and never narrows the cards.
+    const width = (this.size?.width ?? 0) + this.sidePanelsWidth();
     if (!width || !count) return 280;
     const fit = (width - 2 * PAD_X + SCROLL_GUTTER - (count - 1) * GAP) / count;
     return Math.floor(Math.max(COLUMN_MIN, Math.min(COLUMN_MAX, fit)));
