@@ -6,7 +6,7 @@ A [Herdr](https://herdr.dev) layout for working with coding agents and a Shortcu
 
 - **Terminals / Board switch** left of the tab bar: swap the main area between your terminals and your Shortcut team's kanban board.
 - **Story pane**: click a card to read its description, relationships and comments next to the board (read-only).
-- **Usage panel**: Claude and Codex 5-hour and weekly plan limits at the bottom of the sidebar.
+- **Usage panel**: CPU, RAM and GPU gauges and Claude and Codex 5-hour and weekly plan limits at the bottom of the sidebar.
 - **Right rail**: your open GitHub pull requests and your past Claude Code and Codex sessions for the focused repo; child terminals get their own pane.
 
 ## Install
@@ -31,4 +31,4 @@ Before installing, know that these mods run programs and reach the network: the 
 
 ## License
 
-MIT, see `LICENSE`. The bundled Inter font is under the SIL Open Font License (`mods/shortcut-board/fonts/LICENSE-Inter.txt`).
+MIT, see `LICENSE`. The usage panel's look is adapted from [chelebyy/herdr-agent-workspace](https://github.com/chelebyy/herdr-agent-workspace) (Apache 2.0) and [Lakris2407/herdr-quota](https://github.com/Lakris2407/herdr-quota) (MIT); the bundled Inter font is under the SIL Open Font License. See `NOTICE`.

@@ -1,0 +1,16 @@
+Board Desk for Herdr
+Copyright 2026 klindic. MIT License (see LICENSE).
+
+This package contains third-party work:
+
+1. mods/usage-limits: the look of the system gauges (CPU, RAM, GPU mini graphs)
+   and the quota rows (layout, color scale, time-left format) is adapted from
+   the "system-windows" and "quota" mods of
+   https://github.com/chelebyy/herdr-agent-workspace
+   (Copyright 2026 chelebyy, Apache License 2.0), which are themselves based on
+   https://github.com/Lakris2407/herdr-quota
+   (Copyright 2026 Lakris2407, MIT License).
+   The data sources (sysstats.py, fetch_usage.py) are this package's own.
+
+2. mods/shortcut-board/fonts: Inter by The Inter Project Authors,
+   SIL Open Font License 1.1 (see fonts/LICENSE-Inter.txt).

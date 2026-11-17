@@ -39,12 +39,18 @@ def reset_label(epoch):
     return "resets on " + datetime.fromtimestamp(epoch).strftime("%a %H:%M")
 
 
-def window(label, percent, resets_at):
+def window(label, percent, resets_at, seconds=None):
     now = time.time()
     if resets_at and resets_at < now:
         # The window rolled over since this was recorded: nothing used in the new one yet.
-        return {"label": label, "percent": 0, "resets": None}
-    return {"label": label, "percent": max(0, min(100, round(percent or 0))), "resets": reset_label(resets_at)}
+        return {"label": label, "percent": 0, "resets": None, "resets_at": None, "seconds": seconds}
+    return {
+        "label": label,
+        "percent": max(0, min(100, round(percent or 0))),
+        "resets": reset_label(resets_at),
+        "resets_at": int(resets_at) if resets_at else None,
+        "seconds": seconds,
+    }
 
 
 def get_json(url, headers):
@@ -88,10 +94,10 @@ def claude():
     except Exception as error:
         return {"error": http_error(error)}
     windows = []
-    for key, label in (("five_hour", "5-hour"), ("seven_day", "Weekly")):
+    for key, label, seconds in (("five_hour", "5-hour", 5 * 3600), ("seven_day", "Weekly", 7 * 86400)):
         entry = data.get(key)
         if entry:
-            windows.append(window(label, entry.get("utilization"), iso_epoch(entry.get("resets_at"))))
+            windows.append(window(label, entry.get("utilization"), iso_epoch(entry.get("resets_at")), seconds))
     return {"windows": windows}
 
 
@@ -108,7 +114,8 @@ def codex_from_api():
     for key in ("primary_window", "secondary_window"):
         entry = limits.get(key)
         if entry:
-            windows.append(window(window_label(entry.get("limit_window_seconds")), entry.get("used_percent"), entry.get("reset_at")))
+            seconds = entry.get("limit_window_seconds")
+            windows.append(window(window_label(seconds), entry.get("used_percent"), entry.get("reset_at"), seconds))
     return windows
 
 
@@ -131,7 +138,7 @@ def codex_from_sessions():
                 entry = limits.get(key)
                 if entry:
                     minutes = entry.get("window_minutes") or 0
-                    windows.append(window(window_label(minutes * 60), entry.get("used_percent"), entry.get("resets_at")))
+                    windows.append(window(window_label(minutes * 60), entry.get("used_percent"), entry.get("resets_at"), minutes * 60 or None))
             if windows:
                 return windows
     return []
