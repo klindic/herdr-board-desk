@@ -7,22 +7,28 @@ import {
   buildTask,
   choose,
   effortsFor,
+  familiesFor,
   isReady,
+  modelIdFor,
   nextStep,
   normalizeBranch,
   parseCodexModels,
+  resolveModel,
+  stepsFor,
+  versionsFor,
   summarizePulls,
   sanitize,
   startFolder,
   withCodexModels,
 } from "../mods/shortcut-board/implement.js";
 
-const EMPTY = { agent: null, model: null, effort: null };
+const EMPTY = { agent: null, model: null, version: null, effort: null };
 
 test("sanitize keeps a valid remembered choice", () => {
   assert.deepEqual(sanitize({ agent: "claude", model: "opus", effort: "high" }), {
     agent: "claude",
     model: "opus",
+    version: null,
     effort: "high",
   });
 });
@@ -31,26 +37,28 @@ test("sanitize drops values the agent does not offer", () => {
   assert.deepEqual(sanitize({ agent: "codex", model: "opus", effort: "max" }), {
     agent: "codex",
     model: null,
+    version: null,
     effort: null,
   });
   assert.deepEqual(sanitize({ agent: "nope", model: "opus", effort: "high" }), EMPTY);
   assert.deepEqual(sanitize(null), EMPTY);
 });
 
-test("choose resets model and effort when the agent changes", () => {
-  const start = { agent: "claude", model: "opus", effort: "high" };
-  assert.deepEqual(choose(start, "agent", "codex"), { agent: "codex", model: null, effort: null });
+test("choose resets model, version and effort when the agent changes", () => {
+  const start = { agent: "claude", model: "opus", version: null, effort: "high" };
+  assert.deepEqual(choose(start, "agent", "codex"), { agent: "codex", model: null, version: null, effort: null });
   assert.deepEqual(choose(start, "agent", "claude"), start);
-  assert.deepEqual(choose(start, "model", "sonnet"), { agent: "claude", model: "sonnet", effort: "high" });
+  assert.deepEqual(choose(start, "model", "sonnet"), { agent: "claude", model: "sonnet", version: null, effort: null });
 });
 
-test("nextStep and isReady walk the stepper", () => {
+test("nextStep and isReady walk the Claude stepper", () => {
   assert.equal(nextStep(EMPTY), "agent");
-  assert.equal(nextStep({ agent: "claude", model: null, effort: null }), "model");
-  assert.equal(nextStep({ agent: "claude", model: "opus", effort: null }), "effort");
-  assert.equal(nextStep({ agent: "claude", model: "opus", effort: "high" }), null);
-  assert.equal(isReady({ agent: "claude", model: "opus", effort: "high" }), true);
-  assert.equal(isReady({ agent: "claude", model: "opus", effort: null }), false);
+  assert.equal(nextStep({ ...EMPTY, agent: "claude" }), "model");
+  assert.equal(nextStep({ ...EMPTY, agent: "claude", model: "opus" }), "effort");
+  assert.equal(nextStep({ ...EMPTY, agent: "claude", model: "opus", effort: "high" }), null);
+  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "opus", effort: "high" }), true);
+  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "opus" }), false);
+  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "nope", effort: "high" }), false);
 });
 
 test("buildArgv appends the agent's own flags to its run command", () => {
@@ -222,6 +230,127 @@ test("parseCodexModels gives [] for bad JSON or an unexpected shape", () => {
   assert.deepEqual(parseCodexModels('{"models": [null, 4]}'), []);
 });
 
+const EFFORTS = ["low", "medium", "high"];
+const CODEX_CACHE = JSON.stringify({
+  models: [
+    ["gpt-6.2-sol", ["low", "medium", "high", "max"]],
+    ["gpt-6.1-sol", EFFORTS],
+    ["gpt-6-sol", EFFORTS],
+    ["gpt-5.6-sol", EFFORTS],
+    ["gpt-6-luna", ["low", "medium"]],
+    ["gpt-5.6-luna", EFFORTS],
+    ["codex-mini", ["low"]],
+    ["gpt-6.3-nova", ["low"]],
+  ].map(([slug, efforts]) => ({
+    slug,
+    visibility: "list",
+    supported_reasoning_levels: efforts.map((effort) => ({ effort })),
+  })),
+});
+const CODEX = withCodexModels(AGENTS, parseCodexModels(CODEX_CACHE));
+const CHOICE = (agent, model = null, version = null, effort = null) => ({ agent, model, version, effort });
+
+test("parseCodexModels adds family and version for matching slugs only", () => {
+  const models = parseCodexModels(CODEX_CACHE);
+  assert.deepEqual(models[0], { id: "gpt-6.2-sol", label: "gpt-6.2-sol", family: "sol", version: "6.2", efforts: ["low", "medium", "high", "max"] });
+  assert.equal(models[2].version, "6");
+  assert.deepEqual(models[6], { id: "codex-mini", label: "codex-mini", efforts: ["low"] });
+  assert.equal("family" in models[6], false);
+  assert.equal(parseCodexModels('{"models":[{"slug":"GPT-6.1-SOL","supported_reasoning_levels":[{"effort":"low"}]}]}')[0].family, "sol");
+});
+
+test("the static Codex fallback carries family and version", () => {
+  assert.equal(AGENTS.codex.models[0].family, "sol");
+  assert.equal(AGENTS.codex.models[0].version, "6.1");
+});
+
+test("familiesFor lists unique families in file order", () => {
+  assert.deepEqual(familiesFor(CODEX, "codex"), [
+    { id: "sol", label: "Sol" },
+    { id: "luna", label: "Luna" },
+    { id: "codex-mini", label: "codex-mini" },
+    { id: "nova", label: "Nova" },
+  ]);
+  assert.deepEqual(familiesFor(AGENTS, "claude").map((f) => f.id), ["fable", "opus", "sonnet", "haiku"]);
+  assert.deepEqual(familiesFor(AGENTS, "claude")[1], { id: "opus", label: "Opus" });
+  assert.deepEqual(familiesFor(AGENTS, "nope"), []);
+});
+
+test("versionsFor lists a family's versions in file order", () => {
+  assert.deepEqual(versionsFor(CODEX, "codex", "sol"), ["6.2", "6.1", "6", "5.6"]);
+  assert.deepEqual(versionsFor(CODEX, "codex", "luna"), ["6", "5.6"]);
+  assert.deepEqual(versionsFor(CODEX, "codex", "codex-mini"), []);
+  assert.deepEqual(versionsFor(AGENTS, "claude", "opus"), []);
+  assert.deepEqual(versionsFor(CODEX, "codex", null), []);
+});
+
+test("resolveModel and modelIdFor find the real model", () => {
+  assert.equal(resolveModel(CODEX, "codex", CHOICE("codex", "sol", "6")).id, "gpt-6-sol");
+  assert.equal(resolveModel(CODEX, "codex", CHOICE("codex", "sol", "5.6")).id, "gpt-5.6-sol");
+  assert.equal(resolveModel(CODEX, "codex", CHOICE("codex", "sol")), undefined);
+  assert.equal(resolveModel(CODEX, "codex", CHOICE("codex", "codex-mini")).id, "codex-mini");
+  assert.equal(resolveModel(CODEX, "codex", CHOICE("codex", "luna", "6.2")), undefined);
+  assert.equal(modelIdFor(AGENTS, CHOICE("claude", "opus")), "opus");
+  assert.equal(modelIdFor(CODEX, CHOICE("codex", "luna", "5.6")), "gpt-5.6-luna");
+  assert.equal(modelIdFor(CODEX, CHOICE("codex", "luna")), undefined);
+  assert.equal(modelIdFor(AGENTS, EMPTY), undefined);
+});
+
+test("stepsFor adds Version only for a family that has versions", () => {
+  assert.deepEqual(stepsFor(CODEX, "codex", CHOICE("codex")), ["agent", "model", "effort"]);
+  assert.deepEqual(stepsFor(CODEX, "codex", CHOICE("codex", "sol")), ["agent", "model", "version", "effort"]);
+  assert.deepEqual(stepsFor(CODEX, "codex", CHOICE("codex", "codex-mini")), ["agent", "model", "effort"]);
+  assert.deepEqual(stepsFor(AGENTS, "claude", CHOICE("claude", "opus")), ["agent", "model", "effort"]);
+});
+
+test("effortsFor takes the whole choice and needs it to resolve", () => {
+  assert.deepEqual(effortsFor(CODEX, "codex", CHOICE("codex", "sol", "6.2")), ["low", "medium", "high", "max"]);
+  assert.deepEqual(effortsFor(CODEX, "codex", CHOICE("codex", "sol")), []);
+  assert.deepEqual(effortsFor(AGENTS, "claude", CHOICE("claude", "opus")), ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(effortsFor(AGENTS, "claude", CHOICE("claude", "nope")), []);
+  assert.deepEqual(effortsFor(AGENTS, "nope", CHOICE("nope", "opus")), []);
+});
+
+test("choose model clears version and effort, and auto-selects a single version", () => {
+  const start = CHOICE("codex", "sol", "6", "high");
+  assert.deepEqual(choose(start, "model", "luna", CODEX), CHOICE("codex", "luna"));
+  assert.deepEqual(choose(start, "model", "sol", CODEX), start);
+  assert.deepEqual(choose(CHOICE("codex"), "model", "nova", CODEX), CHOICE("codex", "nova", "6.3"));
+  assert.deepEqual(choose(CHOICE("codex", "sol", "6", "high"), "model", "codex-mini", CODEX), CHOICE("codex", "codex-mini"));
+});
+
+test("choose version keeps the effort only when the resolved model supports it", () => {
+  assert.deepEqual(choose(CHOICE("codex", "sol", "6.2", "max"), "version", "6.1", CODEX), CHOICE("codex", "sol", "6.1"));
+  assert.deepEqual(choose(CHOICE("codex", "sol", "6.2", "high"), "version", "6", CODEX), CHOICE("codex", "sol", "6", "high"));
+  assert.deepEqual(choose(CHOICE("codex", "sol"), "version", "6.2", CODEX), CHOICE("codex", "sol", "6.2"));
+  assert.deepEqual(choose(CHOICE("codex", "sol", "6.2"), "effort", "max", CODEX), CHOICE("codex", "sol", "6.2", "max"));
+});
+
+test("sanitize validates family, version and effort in turn", () => {
+  assert.deepEqual(sanitize(CHOICE("codex", "sol", "6.2", "max"), CODEX), CHOICE("codex", "sol", "6.2", "max"));
+  assert.deepEqual(sanitize(CHOICE("codex", "sol", "9", "low"), CODEX), CHOICE("codex", "sol"));
+  assert.deepEqual(sanitize(CHOICE("codex", "luna", "6.2", "low"), CODEX), CHOICE("codex", "luna"));
+  assert.deepEqual(sanitize(CHOICE("codex", "sol", "6", "max"), CODEX), CHOICE("codex", "sol", "6"));
+  assert.deepEqual(sanitize(CHOICE("codex", "codex-mini", null, "low"), CODEX), CHOICE("codex", "codex-mini", null, "low"));
+});
+
+test("sanitize handles old-format choices without a version", () => {
+  assert.deepEqual(sanitize({ agent: "claude", model: "opus", effort: "high" }, CODEX), CHOICE("claude", "opus", null, "high"));
+  assert.deepEqual(sanitize({ agent: "codex", model: "gpt-6.1-sol", effort: "low" }, CODEX), CHOICE("codex"));
+});
+
+test("nextStep and isReady walk the Codex stepper", () => {
+  assert.equal(nextStep(CHOICE("codex"), CODEX), "model");
+  assert.equal(nextStep(CHOICE("codex", "sol"), CODEX), "version");
+  assert.equal(nextStep(CHOICE("codex", "sol", "6.2"), CODEX), "effort");
+  assert.equal(nextStep(CHOICE("codex", "sol", "6.2", "low"), CODEX), null);
+  assert.equal(nextStep(CHOICE("codex", "codex-mini"), CODEX), "effort");
+  assert.equal(isReady(CHOICE("codex", "sol", "6.2", "low"), CODEX), true);
+  assert.equal(isReady(CHOICE("codex", "sol", null, "low"), CODEX), false);
+  assert.equal(isReady(CHOICE("codex", "codex-mini", null, "low"), CODEX), true);
+  assert.equal(isReady(CHOICE("codex", "sol", "9", "low"), CODEX), false);
+});
+
 test("withCodexModels returns a new catalog without mutating AGENTS", () => {
   const models = [{ id: "x", label: "X", efforts: ["low"] }];
   const before = JSON.stringify(AGENTS);
@@ -231,34 +360,4 @@ test("withCodexModels returns a new catalog without mutating AGENTS", () => {
   assert.equal(catalog.claude, AGENTS.claude);
   assert.equal(JSON.stringify(AGENTS), before);
   assert.equal(withCodexModels(AGENTS, []), AGENTS);
-});
-
-test("effortsFor returns the model's efforts or []", () => {
-  assert.deepEqual(effortsFor(AGENTS, "codex", "gpt-6.1-sol"), ["low", "medium", "high", "xhigh", "max", "ultra"]);
-  assert.deepEqual(effortsFor(AGENTS, "claude", "opus"), ["low", "medium", "high", "xhigh", "max"]);
-  assert.deepEqual(effortsFor(AGENTS, "claude", "nope"), []);
-  assert.deepEqual(effortsFor(AGENTS, "nope", "opus"), []);
-  assert.deepEqual(effortsFor(AGENTS, "claude", null), []);
-});
-
-const SMALL = withCodexModels(AGENTS, [
-  { id: "small", label: "Small", efforts: ["low", "medium"] },
-  { id: "big", label: "Big", efforts: ["low", "medium", "high"] },
-]);
-
-test("sanitize drops an effort the chosen model lacks, using the given catalog", () => {
-  assert.deepEqual(sanitize({ agent: "codex", model: "small", effort: "high" }, SMALL), {
-    agent: "codex",
-    model: "small",
-    effort: null,
-  });
-  assert.deepEqual(sanitize({ agent: "codex", model: "big", effort: "high" }, SMALL).effort, "high");
-  assert.equal(sanitize({ agent: "codex", model: "gpt-6.1-sol", effort: "low" }, SMALL).model, null);
-});
-
-test("choose clears the effort when the new model lacks it", () => {
-  const start = { agent: "codex", model: "big", effort: "high" };
-  assert.deepEqual(choose(start, "model", "small", SMALL), { agent: "codex", model: "small", effort: null });
-  assert.deepEqual(choose(start, "model", "big", SMALL), start);
-  assert.deepEqual(choose({ ...start, effort: "low" }, "model", "small", SMALL).effort, "low");
 });

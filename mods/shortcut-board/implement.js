@@ -18,13 +18,65 @@ export const AGENTS = {
   codex: {
     // Fallback only: the pane replaces this with the list from Codex's own models cache when it can read it.
     label: "Codex",
-    models: [{ id: "gpt-6.1-sol", label: "gpt-6.1-sol", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"] }],
+    models: [
+      {
+        id: "gpt-6.1-sol",
+        label: "gpt-6.1-sol",
+        family: "sol",
+        version: "6.1",
+        efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      },
+    ],
   },
 };
 
-// The efforts a model supports in the given catalog, or [] when the agent or model is unknown.
-export function effortsFor(catalog, agent, model) {
-  return catalog[agent]?.models.find((m) => m.id === model)?.efforts ?? [];
+// Splits a Codex slug like "gpt-6.2-sol" into { family: "sol", version: "6.2" }; {} when it does not match.
+function parseSlug(slug) {
+  const match = /^gpt-(\d+(?:\.\d+)?)-([a-z0-9]+)$/i.exec(slug);
+  return match ? { family: match[2].toLowerCase(), version: match[1] } : {};
+}
+
+const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+const modelsOf = (catalog, agent) => catalog[agent]?.models ?? [];
+const familyKey = (model) => model.family ?? model.id;
+
+// The model families an agent offers, unique, in file order: [{ id, label }].
+export function familiesFor(catalog, agent) {
+  const out = [];
+  for (const model of modelsOf(catalog, agent)) {
+    const id = familyKey(model);
+    if (out.some((f) => f.id === id)) continue;
+    out.push({ id, label: model.family ? capitalize(model.family) : model.label });
+  }
+  return out;
+}
+
+// The versions of one family, in file order. [] when the family has none (Claude, unmatched slugs) or is unknown.
+export function versionsFor(catalog, agent, family) {
+  return modelsOf(catalog, agent)
+    .filter((m) => familyKey(m) === family && m.version)
+    .map((m) => m.version);
+}
+
+// The catalog model a choice points at, or undefined (version not chosen yet, unknown family, ...).
+export function resolveModel(catalog, agent, choice) {
+  return modelsOf(catalog, agent).find(
+    (m) => familyKey(m) === choice?.model && (m.version ?? null) === (choice?.version ?? null),
+  );
+}
+
+// The real model id (slug or alias) for argv, or undefined when the choice does not resolve.
+export const modelIdFor = (catalog, choice) => resolveModel(catalog, choice?.agent, choice)?.id;
+
+// The steps this choice goes through. The Version step only exists for a family that has versions.
+export function stepsFor(catalog, agent, choice) {
+  const hasVersions = versionsFor(catalog, agent, choice?.model).length > 0;
+  return hasVersions ? ["agent", "model", "version", "effort"] : ["agent", "model", "effort"];
+}
+
+// The efforts of the model the choice resolves to, or [] when it does not resolve yet.
+export function effortsFor(catalog, agent, choice) {
+  return resolveModel(catalog, agent, choice)?.efforts ?? [];
 }
 
 // Codex's visible models with their reasoning efforts, from the text of ~/.codex/models_cache.json. [] on anything unexpected.
@@ -43,7 +95,7 @@ export function parseCodexModels(text) {
     const levels = Array.isArray(entry.supported_reasoning_levels) ? entry.supported_reasoning_levels : [];
     const efforts = levels.map((l) => l?.effort).filter((e) => typeof e === "string" && e);
     if (efforts.length === 0) continue;
-    out.push({ id: entry.slug, label: entry.display_name || entry.slug, efforts });
+    out.push({ id: entry.slug, label: entry.display_name || entry.slug, ...parseSlug(entry.slug), efforts });
   }
   return out;
 }
@@ -53,8 +105,6 @@ export function withCodexModels(catalog, models) {
   if (!Array.isArray(models) || models.length === 0) return catalog;
   return { ...catalog, codex: { ...catalog.codex, models } };
 }
-
-export const STEPS = ["agent", "model", "effort"];
 
 // The integration checkouts under the axial-main root. Both are updated before every launch,
 // because the agent has not chosen a repo yet.
@@ -91,28 +141,47 @@ export function summarizePulls(results) {
   return `Could not update ${parts.join(" and ")}`;
 }
 
-// A remembered choice, with anything the catalog no longer offers dropped.
+// A remembered choice, keeping each part only while it is valid in the catalog; a missing version counts as null.
 export function sanitize(last, catalog = AGENTS) {
-  const agent = catalog[last?.agent] ? last.agent : null;
-  if (!agent) return { agent: null, model: null, effort: null };
-  const model = catalog[agent].models.some((m) => m.id === last.model) ? last.model : null;
-  const effort = effortsFor(catalog, agent, model).includes(last.effort) ? last.effort : null;
-  return { agent, model, effort };
+  const result = { agent: null, model: null, version: null, effort: null };
+  if (!catalog[last?.agent]) return result;
+  const agent = last.agent;
+  result.agent = agent;
+  if (!familiesFor(catalog, agent).some((f) => f.id === last.model)) return result;
+  result.model = last.model;
+  const versions = versionsFor(catalog, agent, last.model);
+  if (versions.length > 0) {
+    if (!versions.includes(last.version)) return result;
+    result.version = last.version;
+  }
+  if (effortsFor(catalog, agent, result).includes(last.effort)) result.effort = last.effort;
+  return result;
 }
 
 export function choose(choice, step, value, catalog = AGENTS) {
   if (step === "agent") {
-    return value === choice.agent ? choice : { agent: value, model: null, effort: null };
+    return value === choice.agent ? choice : { agent: value, model: null, version: null, effort: null };
   }
   if (step === "model") {
-    const keep = effortsFor(catalog, choice.agent, value).includes(choice.effort);
-    return { ...choice, model: value, effort: keep ? choice.effort : null };
+    if (value === choice.model) return choice;
+    const versions = versionsFor(catalog, choice.agent, value);
+    return { ...choice, model: value, version: versions.length === 1 ? versions[0] : null, effort: null };
+  }
+  if (step === "version") {
+    const next = { ...choice, version: value };
+    const keep = effortsFor(catalog, choice.agent, next).includes(choice.effort);
+    return { ...next, effort: keep ? choice.effort : null };
   }
   return { ...choice, [step]: value };
 }
 
-export const nextStep = (choice) => STEPS.find((step) => !choice[step]) ?? null;
-export const isReady = (choice) => nextStep(choice) === null;
+export function nextStep(choice, catalog = AGENTS) {
+  return stepsFor(catalog, choice.agent, choice).find((step) => !choice[step]) ?? null;
+}
+
+export function isReady(choice, catalog = AGENTS) {
+  return nextStep(choice, catalog) === null && resolveModel(catalog, choice.agent, choice) !== undefined;
+}
 
 // `run` is the agent's own command from Herdr's program table (knownAgents()).
 // `addDir` lets claude read the brief folder without a permission prompt; codex ignores it.

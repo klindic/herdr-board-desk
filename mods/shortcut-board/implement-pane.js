@@ -6,24 +6,27 @@ import { theme, exec, home, run, focused, knownAgents, readTextFile, writeTextFi
 import {
   AGENTS,
   BASE_REPOS,
-  STEPS,
   buildArgv,
   buildBrief,
   buildTask,
   choose,
   effortsFor,
+  familiesFor,
   isReady,
+  modelIdFor,
   normalizeBranch,
   parseCodexModels,
   sanitize,
+  stepsFor,
   summarizePulls,
+  versionsFor,
   withCodexModels,
 } from "./implement.js";
 
 const LAST_KEY = "implement-last";
 const BRIEF_DIR = ".cache/herdr-implement";
 const GUTTER = 10;
-const STEP_TITLE = { agent: "Agent", model: "Model", effort: "Effort" };
+const STEP_TITLE = { agent: "Agent", model: "Model", version: "Version", effort: "Effort" };
 const stop = (_e, cx) => cx.stop_propagation();
 const icon = (name) => `mods/shortcut-board/icons/${name}.svg`;
 
@@ -31,7 +34,7 @@ export class ImplementPane {
   init() {
     this.storyId = null;
     this.catalog = AGENTS;
-    this.choice = { agent: null, model: null, effort: null };
+    this.choice = { agent: null, model: null, version: null, effort: null };
     this.planOnly = false;
     this.starting = false;
     this.inFlight = new Set();
@@ -90,7 +93,7 @@ export class ImplementPane {
         const list = await knownAgents();
         this.installed = Object.fromEntries(list.map((a) => [a.key, a.installed]));
         if (this.isOpen(id) && this.choice.agent && this.installed[this.choice.agent] === false) {
-          this.choice = { agent: null, model: null, effort: null };
+          this.choice = { agent: null, model: null, version: null, effort: null };
         }
       } catch {}
       cx.notify();
@@ -144,8 +147,11 @@ export class ImplementPane {
 
   options(step) {
     if (step === "agent") return Object.entries(this.catalog).map(([id, agent]) => ({ id, label: agent.label }));
-    if (step === "model") return this.catalog[this.choice.agent].models;
-    return effortsFor(this.catalog, this.choice.agent, this.choice.model).map((id) => ({ id, label: id }));
+    if (step === "model") return familiesFor(this.catalog, this.choice.agent);
+    if (step === "version") {
+      return versionsFor(this.catalog, this.choice.agent, this.choice.model).map((id) => ({ id, label: id }));
+    }
+    return effortsFor(this.catalog, this.choice.agent, this.choice).map((id) => ({ id, label: id }));
   }
 
   optionChip(view, step, option) {
@@ -176,8 +182,9 @@ export class ImplementPane {
   stepper(view) {
     const t = theme();
     const rows = [];
-    for (const step of STEPS) {
-      const before = STEPS[STEPS.indexOf(step) - 1];
+    const steps = stepsFor(this.catalog, this.choice.agent, this.choice);
+    for (const [index, step] of steps.entries()) {
+      const before = steps[index - 1];
       if (before && !this.choice[before]) break;
       const chips = this.options(step).map((option) => this.optionChip(view, step, option));
       rows.push(
@@ -355,7 +362,7 @@ export class ImplementPane {
 
   startButton(view, story) {
     const t = theme();
-    const ready = isReady(this.choice) && Boolean(story) && !this.starting && !this.launched &&
+    const ready = isReady(this.choice, this.catalog) && Boolean(story) && !this.starting && !this.launched &&
       !(story && this.inFlight.has(story.id));
     return div()
       .id("impl-start")
@@ -381,6 +388,7 @@ export class ImplementPane {
   start(story, root, cx) {
     if (this.starting || this.inFlight.has(story.id)) return;
     const choice = { ...this.choice };
+    const catalog = this.catalog;
     const planOnly = this.planOnly;
     const prompt = this.prompt.value();
     const branch = this.effectiveBranch(story);
@@ -397,6 +405,7 @@ export class ImplementPane {
         const agents = await knownAgents();
         const entry = agents.find((a) => a.key === choice.agent);
         if (!entry || !entry.installed) throw new Error(`${AGENTS[choice.agent].label} is not installed`);
+        if (!modelIdFor(catalog, choice)) throw new Error("The chosen model is no longer available");
         const pulls = await Promise.all(
           BASE_REPOS.map(async (repo) => {
             const cwd = `${root}/${repo}`;
@@ -434,7 +443,7 @@ export class ImplementPane {
           name: `sc-${storyId}`,
           space: focused()?.space,
           folder: root,
-          argv: buildArgv({ run: entry.run, ...choice, addDir: dir }),
+          argv: buildArgv({ run: entry.run, agent: choice.agent, model: modelIdFor(catalog, choice), effort: choice.effort, addDir: dir }),
           task: buildTask({ agent: choice.agent, storyId, url: story.url, briefPath }),
           focus: true,
         });
