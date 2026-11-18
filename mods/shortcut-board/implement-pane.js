@@ -192,6 +192,8 @@ export class ImplementPane {
       .child(
         Textarea.new(this.prompt)
           .h(128)
+          .px(10)
+          .py(8)
           .rounded(9)
           .border_1()
           .border_color(t.input)
