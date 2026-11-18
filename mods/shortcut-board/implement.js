@@ -79,7 +79,7 @@ export function buildBrief({ storyId, url, branch, interactive, planOnly, prompt
     lines.push("Run to completion: do not ask questions. Decide, and log your assumptions in the PR description.");
   }
   let text = lines.join("\n");
-  const extra = (prompt ?? "").trim();
+  const extra = (prompt ?? "").replace(/^(\s*\n)+/, "").trimEnd();
   if (extra) text += `\n\n## Prompt\n${extra}`;
   return `${text}\n`;
 }

@@ -29,10 +29,17 @@ export class ImplementPane {
     this.openStep = "agent";
     this.planOnly = false;
     this.starting = false;
+    this.launched = false;
     this.error = null;
     this.notice = null;
+    this.warning = null;
     this.installed = {};
     this.prompt = TextareaState.new({ placeholder: "Anything extra for the agent. Leave empty to skip.", rows: 5 });
+    this.prompt.on("change", (_e, cx) => {
+      if (!this.launched) return;
+      this.launched = false;
+      cx.notify();
+    });
   }
 
   isOpen(id) {
@@ -40,6 +47,7 @@ export class ImplementPane {
   }
 
   open(id, cx) {
+    if (this.isOpen(id)) return;
     this.storyId = id;
     let last = null;
     try {
@@ -51,11 +59,17 @@ export class ImplementPane {
     this.starting = false;
     this.error = null;
     this.notice = null;
+    this.warning = null;
     this.prompt.set_value("");
+    this.launched = false;
     cx.spawn(async (cx) => {
       try {
         const list = await knownAgents();
         this.installed = Object.fromEntries(list.map((a) => [a.key, a.installed]));
+        if (this.isOpen(id) && this.choice.agent && this.installed[this.choice.agent] === false) {
+          this.choice = { agent: null, model: null, effort: null };
+          this.openStep = "agent";
+        }
       } catch {}
       cx.notify();
     });
@@ -68,6 +82,7 @@ export class ImplementPane {
 
   pick(step, value, cx) {
     this.choice = choose(this.choice, step, value);
+    this.launched = false;
     this.openStep = nextStep(this.choice);
     cx.notify();
   }
@@ -83,11 +98,26 @@ export class ImplementPane {
   }
 
   optionChip(view, step, option) {
-    const disabled = step === "agent" && this.installed[option.id] === false;
-    const label = disabled ? `${option.label} (not installed)` : option.label;
-    return view.chip(`impl-${step}-${option.id}`, label, this.choice[step] === option.id, (_e, cx) => {
+    if (step === "agent" && this.installed[option.id] === false) {
+      const t = theme();
+      return div()
+        .id(`impl-${step}-${option.id}`)
+        .h(26)
+        .px(12)
+        .flex()
+        .items_center()
+        .rounded_full()
+        .text_size(12.5)
+        .border(1)
+        .border_color(t.border)
+        .bg(t.background)
+        .text_color(t.dim)
+        .opacity(0.5)
+        .child(`${option.label} (not installed)`);
+    }
+    return view.chip(`impl-${step}-${option.id}`, option.label, this.choice[step] === option.id, (_e, cx) => {
       cx.stop_propagation();
-      if (!disabled) this.pick(step, option.id, cx);
+      this.pick(step, option.id, cx);
     });
   }
 
@@ -156,6 +186,7 @@ export class ImplementPane {
             view.chip("impl-plan", "Plan only, stop before coding", this.planOnly, (_e, cx) => {
               cx.stop_propagation();
               this.planOnly = !this.planOnly;
+              this.launched = false;
               cx.notify();
             }),
           ),
@@ -173,7 +204,7 @@ export class ImplementPane {
           .child(div().text_size(13).font_semibold().text_color(t.foreground).child("Prompt"))
           .child(div().text_size(12).text_color(t.dim).child("optional")),
       )
-      .child(div().text_size(12).text_color(t.dim).child("Added to the end of the first message. Leave it empty to skip."))
+      .child(div().text_size(12).text_color(t.dim).child("Added to the launch brief the agent reads first. Leave it empty to skip."))
       .child(
         Textarea.new(this.prompt)
           .h(128)
@@ -188,7 +219,7 @@ export class ImplementPane {
 
   startButton(view, story) {
     const t = theme();
-    const ready = isReady(this.choice) && Boolean(story) && !this.starting;
+    const ready = isReady(this.choice) && Boolean(story) && !this.starting && !this.launched;
     return div()
       .id("impl-start")
       .h(36)
@@ -209,58 +240,75 @@ export class ImplementPane {
   }
 
   // Brings both integration checkouts up to date, writes the launch brief, then opens the agent in a new tab.
+  // Everything the async work needs is snapshotted first, so opening another story meanwhile cannot change this run.
   start(story, root, cx) {
-    this.starting = true;
-    this.error = null;
-    this.notice = null;
+    if (this.starting) return;
+    const choice = { ...this.choice };
+    const planOnly = this.planOnly;
+    const prompt = this.prompt.value();
+    const storyId = story.id;
+    const same = () => this.storyId === storyId;
+    const set = (fields) => {
+      if (same()) Object.assign(this, fields);
+    };
+    set({ starting: true, error: null, notice: null, warning: null });
     cx.notify();
     cx.spawn(async (cx) => {
       try {
+        const agents = await knownAgents();
+        const entry = agents.find((a) => a.key === choice.agent);
+        if (!entry || !entry.installed) throw new Error(`${AGENTS[choice.agent].label} is not installed`);
         const failed = [];
+        let detail = "";
         await Promise.all(
           BASE_REPOS.map(async (repo) => {
             try {
               const r = await exec("git", ["pull", "--ff-only"], { cwd: `${root}/${repo}`, timeout: 120000 });
-              if (r.code !== 0) failed.push(repo);
-            } catch {
+              if (r.code !== 0) {
+                failed.push(repo);
+                detail ||= String(r.stderr ?? "").trim().split("\n")[0];
+              }
+            } catch (error) {
               failed.push(repo);
+              detail ||= String(error?.message ?? error).split("\n")[0];
             }
           }),
         );
-        const agents = await knownAgents();
-        const entry = agents.find((a) => a.key === this.choice.agent);
-        if (!entry || !entry.installed) throw new Error(`${AGENTS[this.choice.agent].label} is not installed`);
         const dir = `${home()}/${BRIEF_DIR}`;
         await exec("mkdir", ["-p", dir]);
-        const briefPath = `${dir}/sc-${story.id}-${Date.now()}.md`;
+        const briefPath = `${dir}/sc-${storyId}-${Date.now()}.md`;
         const brief = buildBrief({
-          storyId: story.id,
+          storyId,
           url: story.url,
           branch: story.branch,
           interactive: true,
-          planOnly: this.planOnly,
-          prompt: this.prompt.value(),
+          planOnly,
+          prompt,
           pullFailed: failed.length > 0,
         });
         await writeTextFile(briefPath, brief, null);
         run("tab.new", {
-          name: `sc-${story.id}`,
+          name: `sc-${storyId}`,
           space: focused()?.space,
           folder: root,
-          argv: buildArgv({ run: entry.run, ...this.choice }),
-          task: buildTask({ agent: this.choice.agent, storyId: story.id, url: story.url, briefPath }),
+          argv: buildArgv({ run: entry.run, ...choice }),
+          task: buildTask({ agent: choice.agent, storyId, url: story.url, briefPath }),
           focus: true,
         });
         try {
-          localStorage.setItem(LAST_KEY, JSON.stringify(this.choice));
+          localStorage.setItem(LAST_KEY, JSON.stringify(choice));
         } catch {}
-        this.notice = failed.length
-          ? `Started. Could not update ${failed.join(" and ")}; the agent was told to fetch.`
-          : `Started sc-${story.id} in a new tab.`;
+        set({
+          launched: true,
+          notice: `Started sc-${storyId} in a new tab.`,
+          warning: failed.length
+            ? `Could not update ${failed.join(" and ")}; the agent was told to fetch.${detail ? ` ${detail}` : ""}`
+            : null,
+        });
       } catch (error) {
-        this.error = String(error?.message ?? error);
+        set({ error: String(error?.message ?? error) });
       } finally {
-        this.starting = false;
+        set({ starting: false });
         cx.notify();
       }
     });
@@ -364,6 +412,12 @@ export class ImplementPane {
       .gap(8)
       .border_t(1)
       .border_color(t.border)
+      .when(Boolean(entry.error && !story), (el) =>
+        el.child(div().text_size(12.5).text_color(t.blocked).whitespace_normal().child(String(entry.error))),
+      )
+      .when(Boolean(this.warning), (el) =>
+        el.child(div().text_size(12.5).text_color(t.ansi3).whitespace_normal().child(this.warning)),
+      )
       .when(Boolean(this.error), (el) => el.child(div().text_size(12.5).text_color(t.blocked).whitespace_normal().child(this.error)))
       .when(Boolean(this.notice), (el) => el.child(div().text_size(12.5).text_color(t.muted).whitespace_normal().child(this.notice)))
       .child(this.startButton(view, story));

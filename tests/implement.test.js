@@ -97,7 +97,7 @@ test("buildBrief adds the plan-only, run-to-completion and pull-failed lines", (
 
 test("buildBrief appends the optional prompt verbatim after a blank line", () => {
   const brief = buildBrief({ ...BRIEF, prompt: "  Line one\nLine two  \n" });
-  assert.match(brief, /\n\n## Prompt\nLine one\nLine two\n$/);
+  assert.match(brief, /\n\n## Prompt\n  Line one\nLine two\n$/);
 });
 
 test("buildBrief ignores a whitespace-only prompt", () => {

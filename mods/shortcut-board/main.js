@@ -141,6 +141,8 @@ export default class ShortcutBoard extends View {
   openImplement(id, cx) {
     if (this.selected !== id) this.select(id, cx);
     this.implement.open(id, cx);
+    this.scrollY.implement = 0;
+    this.loadDetail(id, cx);
   }
 
   select(id, cx) {
@@ -425,13 +427,13 @@ export default class ShortcutBoard extends View {
 
     const header = h_flex().h(54).flex_none().px(18).gap(10).items_center().border_b(1).border_color(t.border)
       .child(div().text_size(15).font_semibold().text_color(t.foreground).child("Board"))
-      .child(this.chip("filter-all", "All", this.filter === "all", (_e, cx) => this.setFilter("all", cx)))
-      .child(this.chip("filter-mine", "Mine", this.filter === "mine", (_e, cx) => this.setFilter("mine", cx)))
+      .child(this.chip("filter-all", "All", this.filter === "all", (_e, cx) => { cx.stop_propagation(); this.setFilter("all", cx); }))
+      .child(this.chip("filter-mine", "Mine", this.filter === "mine", (_e, cx) => { cx.stop_propagation(); this.setFilter("mine", cx); }))
       .child(div().flex_1())
       .child(div().text_size(12).truncate().text_color(this.error ? t.blocked : t.dim).child(status))
       .child(div().id("refresh").size(26).flex_none().flex().items_center().justify_center().rounded(6).cursor_pointer()
         .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Refresh from Shortcut")
-        .on_click((_e, cx) => this.refresh(cx))
+        .on_click((_e, cx) => { cx.stop_propagation(); this.refresh(cx); })
         .child(this.loading
           ? svg("mods/workspace-chrome/spinner.svg").size(14).spin(900)
           : svg("mods/shortcut-board/refresh.svg").size(14)));
