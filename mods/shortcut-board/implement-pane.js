@@ -2,7 +2,7 @@
 // Start brings integration up to date, writes a launch brief and opens the agent in a new tab.
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
-import { theme, exec, home, run, focused, knownAgents, readTextFile, writeTextFile } from "herdr";
+import { theme, exec, home, run, focused, knownAgents, readTextFile, writeTextFile, spaces } from "herdr";
 import {
   AGENTS,
   BASE_REPOS,
@@ -439,14 +439,18 @@ export class ImplementPane {
           description: story.description,
         });
         await writeTextFile(briefPath, brief, null);
-        run("tab.new", {
+        // Sessions live in a space named after the start folder (axial-main), made on first use.
+        const spaceName = root.split("/").filter(Boolean).pop() || "axial-main";
+        const home_space = spaces().find((sp) => sp.named && sp.name === spaceName && !sp.machine);
+        const launch = {
           name: `sc-${storyId}`,
-          space: focused()?.space,
           folder: root,
           argv: buildArgv({ run: entry.run, agent: choice.agent, model: modelIdFor(catalog, choice), effort: choice.effort, addDir: dir }),
           task: buildTask({ agent: choice.agent, storyId, url: story.url, briefPath }),
           focus: true,
-        });
+        };
+        if (home_space) run("tab.new", { ...launch, space: home_space.id });
+        else run("space.new", { name: spaceName, folder: root, tab: launch.name, argv: launch.argv, task: launch.task, focus: true });
         try {
           localStorage.setItem(LAST_KEY, JSON.stringify(choice));
         } catch {}
