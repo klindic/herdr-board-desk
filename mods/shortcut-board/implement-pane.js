@@ -12,7 +12,6 @@ import {
   buildTask,
   choose,
   isReady,
-  nextStep,
   normalizeBranch,
   sanitize,
   summarizePulls,
@@ -28,7 +27,6 @@ export class ImplementPane {
   init() {
     this.storyId = null;
     this.choice = { agent: null, model: null, effort: null };
-    this.openStep = "agent";
     this.planOnly = false;
     this.starting = false;
     this.inFlight = new Set();
@@ -57,7 +55,6 @@ export class ImplementPane {
       last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "null");
     } catch {}
     this.choice = sanitize(last);
-    this.openStep = nextStep(this.choice);
     this.planOnly = false;
     this.starting = false;
     this.error = null;
@@ -71,7 +68,6 @@ export class ImplementPane {
         this.installed = Object.fromEntries(list.map((a) => [a.key, a.installed]));
         if (this.isOpen(id) && this.choice.agent && this.installed[this.choice.agent] === false) {
           this.choice = { agent: null, model: null, effort: null };
-          this.openStep = "agent";
         }
       } catch {}
       cx.notify();
@@ -86,7 +82,6 @@ export class ImplementPane {
   pick(step, value, cx) {
     this.choice = choose(this.choice, step, value);
     this.launched = false;
-    this.openStep = nextStep(this.choice);
     cx.notify();
   }
 
@@ -94,10 +89,6 @@ export class ImplementPane {
     if (step === "agent") return Object.entries(AGENTS).map(([id, agent]) => ({ id, label: agent.label }));
     if (step === "model") return AGENTS[this.choice.agent].models;
     return AGENTS[this.choice.agent].efforts.map((id) => ({ id, label: id }));
-  }
-
-  labelOf(step) {
-    return this.options(step).find((o) => o.id === this.choice[step])?.label ?? this.choice[step];
   }
 
   optionChip(view, step, option) {
@@ -124,24 +115,14 @@ export class ImplementPane {
     });
   }
 
-  // One step at a time: a step shows once the one before it is chosen, and collapses to a chip when chosen.
+  // One step at a time: a step shows once the one before it is chosen. Every option stays visible, the chosen one is highlighted.
   stepper(view) {
     const t = theme();
     const rows = [];
     for (const step of STEPS) {
       const before = STEPS[STEPS.indexOf(step) - 1];
       if (before && !this.choice[before]) break;
-      const value = this.choice[step];
-      const expanded = this.openStep === step || !value;
-      const chips = expanded
-        ? this.options(step).map((option) => this.optionChip(view, step, option))
-        : [
-            view.chip(`impl-${step}-chosen`, this.labelOf(step), true, (_e, cx) => {
-              cx.stop_propagation();
-              this.openStep = step;
-              cx.notify();
-            }),
-          ];
+      const chips = this.options(step).map((option) => this.optionChip(view, step, option));
       rows.push(
         v_flex()
           .id(`impl-step-${step}`)
