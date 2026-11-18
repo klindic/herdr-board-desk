@@ -25,6 +25,8 @@ If Codex is picked, an inline note says: the Axial skills (including implement-t
 
 ## What Start does
 
+Before the tile opens, Herdr brings the base up to date. In both `axial-api.git` and `fe-app.git` under the axial-main root (which always sit on `integration`), it runs `git pull --ff-only`. This happens for both because the agent has not chosen a repo yet, and it is cheap. If a pull fails (dirty or diverged checkout), Herdr shows a warning and adds a line to the first message telling the agent to `git fetch` and base its worktree on `origin/integration`.
+
 Calls `run("tab.new", { name, folder, argv, task })` with focus on the new tab. Nothing is written by an agent before launch; the first message is a template.
 
 - argv: the agent's command with model and effort flags.
@@ -36,6 +38,7 @@ First message for Claude:
 ```
 /axialpower:implement-ticket sc-<id>
 Use the branch name <formatted_vcs_branch_name>.
+Always base the worktree on the latest `integration` (use `bin/create-worktree <branch>` from the repo's `.git` checkout). Only branch from something else if the optional prompt says so.
 [Plan only] Stop after the implementation plan is written and wait for me.
 [Run to completion] Do not ask questions; decide, and log assumptions.
 [Optional prompt] a blank line, then your text verbatim (omitted when empty)

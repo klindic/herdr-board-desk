@@ -36,6 +36,10 @@ Local agent commands:
 - Run to completion is only a best-effort prompt line for now, shown as "coming soon".
 - Plan only is off by default.
 
+## Base branch
+
+Work is local. Both `axial-api.git` and `fe-app.git` are kept on `integration` and are the base for `bin/create-worktree` (see the axial-main CLAUDE.md). Rule: always pull the latest `integration` first and create the worktree from it, unless the optional prompt explicitly says otherwise. Herdr does the pull itself before launching (deterministic, no reliance on the agent), and the first message restates the rule.
+
 ## Open questions
 
 - Resolved: the tile starts in the axial-main root (`tab.new` takes a `folder`). The repo is not known up front, and the agent decides it, so no single repo folder fits. Still to confirm that implement-ticket's worktree setup works from there. Work started outside the board still uses the normal repo spaces.
