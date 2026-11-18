@@ -208,16 +208,37 @@ export class ImplementPane {
       )
       .child(
         h_flex()
-          .gap(6)
-          .child(
-            view.chip("impl-plan", "Plan only, stop before coding", this.planOnly, (_e, cx) => {
-              cx.stop_propagation();
-              this.planOnly = !this.planOnly;
-              this.launched = false;
-              cx.notify();
-            }),
-          ),
+          .id("impl-plan")
+          .h(32)
+          .gap(12)
+          .items_center()
+          .cursor_pointer()
+          .on_click((_e, cx) => {
+            cx.stop_propagation();
+            this.planOnly = !this.planOnly;
+            this.launched = false;
+            cx.notify();
+          })
+          .child(div().flex_1().min_w(0).text_size(13).text_color(t.foreground).child("Plan only, stop before coding"))
+          .child(this.switchTrack(this.planOnly)),
       );
+  }
+
+  // A small on/off switch; the row around it handles the click.
+  switchTrack(on) {
+    const t = theme();
+    return h_flex()
+      .w(36)
+      .h(20)
+      .flex_none()
+      .px(3)
+      .items_center()
+      .when(on, (el) => el.justify_end())
+      .rounded_full()
+      .border(1)
+      .border_color(on ? t.accent : t.border)
+      .bg(on ? t.accent : t.raised)
+      .child(div().size(12).rounded_full().bg(on ? t.background : t.muted));
   }
 
   iconButton(id, name, tooltip, action) {
