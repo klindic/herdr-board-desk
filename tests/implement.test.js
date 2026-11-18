@@ -25,10 +25,10 @@ import {
 const EMPTY = { agent: null, model: null, version: null, effort: null };
 
 test("sanitize keeps a valid remembered choice", () => {
-  assert.deepEqual(sanitize({ agent: "claude", model: "opus", effort: "high" }), {
+  assert.deepEqual(sanitize({ agent: "claude", model: "opus", version: "5.5", effort: "high" }), {
     agent: "claude",
     model: "opus",
-    version: null,
+    version: "5.5",
     effort: "high",
   });
 });
@@ -45,7 +45,7 @@ test("sanitize drops values the agent does not offer", () => {
 });
 
 test("choose resets model, version and effort when the agent changes", () => {
-  const start = { agent: "claude", model: "opus", version: null, effort: "high" };
+  const start = { agent: "claude", model: "opus", version: "5.5", effort: "high" };
   assert.deepEqual(choose(start, "agent", "codex"), { agent: "codex", model: null, version: null, effort: null });
   assert.deepEqual(choose(start, "agent", "claude"), start);
   assert.deepEqual(choose(start, "model", "sonnet"), { agent: "claude", model: "sonnet", version: null, effort: null });
@@ -54,18 +54,21 @@ test("choose resets model, version and effort when the agent changes", () => {
 test("nextStep and isReady walk the Claude stepper", () => {
   assert.equal(nextStep(EMPTY), "agent");
   assert.equal(nextStep({ ...EMPTY, agent: "claude" }), "model");
-  assert.equal(nextStep({ ...EMPTY, agent: "claude", model: "opus" }), "effort");
-  assert.equal(nextStep({ ...EMPTY, agent: "claude", model: "opus", effort: "high" }), null);
-  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "opus", effort: "high" }), true);
-  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "opus" }), false);
+  assert.equal(nextStep({ ...EMPTY, agent: "claude", model: "opus" }), "version");
+  assert.equal(nextStep({ ...EMPTY, agent: "claude", model: "opus", version: "5.5" }), "effort");
+  assert.equal(nextStep({ ...EMPTY, agent: "claude", model: "opus", version: "5.5", effort: "high" }), null);
+  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "opus", version: "5.5", effort: "high" }), true);
+  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "opus", effort: "high" }), false);
+  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "opus", version: "5.5" }), false);
+  assert.equal(isReady({ ...EMPTY, agent: "claude", model: "opus", version: "9", effort: "high" }), false);
   assert.equal(isReady({ ...EMPTY, agent: "claude", model: "nope", effort: "high" }), false);
 });
 
 test("buildArgv appends the agent's own flags to its run command", () => {
-  assert.deepEqual(buildArgv({ run: ["claude"], agent: "claude", model: "opus", effort: "high" }), [
+  assert.deepEqual(buildArgv({ run: ["claude"], agent: "claude", model: "claude-opus-5-5", effort: "high" }), [
     "claude",
     "--model",
-    "opus",
+    "claude-opus-5-5",
     "--effort",
     "high",
   ]);
@@ -132,7 +135,7 @@ test("buildBrief handles an empty description and an empty story for codex", () 
 });
 
 test("buildArgv adds --add-dir for claude only", () => {
-  const base = { run: ["claude"], agent: "claude", model: "opus", effort: "high" };
+  const base = { run: ["claude"], agent: "claude", model: "claude-opus-5-5", effort: "high" };
   assert.deepEqual(buildArgv({ ...base, addDir: "/d" }), [...buildArgv(base), "--add-dir", "/d"]);
   assert.ok(!buildArgv(base).includes("--add-dir"));
   const codex = { run: ["codex"], agent: "codex", model: "m", effort: "low" };
@@ -280,7 +283,7 @@ test("versionsFor lists a family's versions in file order", () => {
   assert.deepEqual(versionsFor(CODEX, "codex", "sol"), ["6.2", "6.1", "6", "5.6"]);
   assert.deepEqual(versionsFor(CODEX, "codex", "luna"), ["6", "5.6"]);
   assert.deepEqual(versionsFor(CODEX, "codex", "codex-mini"), []);
-  assert.deepEqual(versionsFor(AGENTS, "claude", "opus"), []);
+  assert.deepEqual(versionsFor(AGENTS, "claude", "opus"), ["5.5", "5", "4.8", "4.7", "4.6", "4.5", "4.1", "4"]);
   assert.deepEqual(versionsFor(CODEX, "codex", null), []);
 });
 
@@ -290,7 +293,10 @@ test("resolveModel and modelIdFor find the real model", () => {
   assert.equal(resolveModel(CODEX, "codex", CHOICE("codex", "sol")), undefined);
   assert.equal(resolveModel(CODEX, "codex", CHOICE("codex", "codex-mini")).id, "codex-mini");
   assert.equal(resolveModel(CODEX, "codex", CHOICE("codex", "luna", "6.2")), undefined);
-  assert.equal(modelIdFor(AGENTS, CHOICE("claude", "opus")), "opus");
+  assert.equal(modelIdFor(AGENTS, CHOICE("claude", "opus")), undefined);
+  assert.equal(modelIdFor(AGENTS, CHOICE("claude", "opus", "4.1")), "claude-opus-4-1");
+  assert.equal(modelIdFor(AGENTS, CHOICE("claude", "opus", "5.5")), "claude-opus-5-5");
+  assert.equal(modelIdFor(AGENTS, CHOICE("claude", "fable", "5")), "claude-fable-5");
   assert.equal(modelIdFor(CODEX, CHOICE("codex", "luna", "5.6")), "gpt-5.6-luna");
   assert.equal(modelIdFor(CODEX, CHOICE("codex", "luna")), undefined);
   assert.equal(modelIdFor(AGENTS, EMPTY), undefined);
@@ -300,13 +306,15 @@ test("stepsFor adds Version only for a family that has versions", () => {
   assert.deepEqual(stepsFor(CODEX, "codex", CHOICE("codex")), ["agent", "model", "effort"]);
   assert.deepEqual(stepsFor(CODEX, "codex", CHOICE("codex", "sol")), ["agent", "model", "version", "effort"]);
   assert.deepEqual(stepsFor(CODEX, "codex", CHOICE("codex", "codex-mini")), ["agent", "model", "effort"]);
-  assert.deepEqual(stepsFor(AGENTS, "claude", CHOICE("claude", "opus")), ["agent", "model", "effort"]);
+  assert.deepEqual(stepsFor(AGENTS, "claude", CHOICE("claude")), ["agent", "model", "effort"]);
+  assert.deepEqual(stepsFor(AGENTS, "claude", CHOICE("claude", "opus")), ["agent", "model", "version", "effort"]);
 });
 
 test("effortsFor takes the whole choice and needs it to resolve", () => {
   assert.deepEqual(effortsFor(CODEX, "codex", CHOICE("codex", "sol", "6.2")), ["low", "medium", "high", "max"]);
   assert.deepEqual(effortsFor(CODEX, "codex", CHOICE("codex", "sol")), []);
-  assert.deepEqual(effortsFor(AGENTS, "claude", CHOICE("claude", "opus")), ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(effortsFor(AGENTS, "claude", CHOICE("claude", "opus")), []);
+  assert.deepEqual(effortsFor(AGENTS, "claude", CHOICE("claude", "opus", "5.5")), ["low", "medium", "high", "xhigh", "max"]);
   assert.deepEqual(effortsFor(AGENTS, "claude", CHOICE("claude", "nope")), []);
   assert.deepEqual(effortsFor(AGENTS, "nope", CHOICE("nope", "opus")), []);
 });
@@ -335,7 +343,8 @@ test("sanitize validates family, version and effort in turn", () => {
 });
 
 test("sanitize handles old-format choices without a version", () => {
-  assert.deepEqual(sanitize({ agent: "claude", model: "opus", effort: "high" }, CODEX), CHOICE("claude", "opus", null, "high"));
+  assert.deepEqual(sanitize({ agent: "claude", model: "opus", effort: "high" }, CODEX), CHOICE("claude", "opus"));
+  assert.deepEqual(sanitize({ agent: "claude", model: "opus", effort: "high" }), CHOICE("claude", "opus"));
   assert.deepEqual(sanitize({ agent: "codex", model: "gpt-6.1-sol", effort: "low" }, CODEX), CHOICE("codex"));
 });
 
@@ -360,4 +369,30 @@ test("withCodexModels returns a new catalog without mutating AGENTS", () => {
   assert.equal(catalog.claude, AGENTS.claude);
   assert.equal(JSON.stringify(AGENTS), before);
   assert.equal(withCodexModels(AGENTS, []), AGENTS);
+});
+
+test("the Claude catalog has versioned entries with real model ids, newest first", () => {
+  const models = AGENTS.claude.models;
+  assert.equal(models.length, 18);
+  assert.deepEqual(versionsFor(AGENTS, "claude", "fable"), ["5.2", "5.1", "5"]);
+  assert.deepEqual(versionsFor(AGENTS, "claude", "sonnet"), ["5.5", "5", "4.6", "4.5", "4"]);
+  assert.deepEqual(versionsFor(AGENTS, "claude", "haiku"), ["5.5", "4.5"]);
+  assert.deepEqual(models.find((m) => m.id === "claude-opus-5-5"), {
+    id: "claude-opus-5-5",
+    label: "Opus 5.5",
+    family: "opus",
+    version: "5.5",
+    efforts: ["low", "medium", "high", "xhigh", "max"],
+  });
+  assert.equal(models.find((m) => m.id === "claude-sonnet-4").label, "Sonnet 4");
+});
+
+test("choose model does not auto-select a Claude family with several versions", () => {
+  assert.deepEqual(choose(CHOICE("claude"), "model", "haiku"), CHOICE("claude", "haiku"));
+  assert.deepEqual(choose(CHOICE("claude", "haiku", "4.5", "high"), "version", "5.5"), CHOICE("claude", "haiku", "5.5", "high"));
+});
+
+test("sanitize drops an old Claude choice without a version at the version step", () => {
+  assert.deepEqual(sanitize({ agent: "claude", model: "sonnet", version: null, effort: "max" }), CHOICE("claude", "sonnet"));
+  assert.deepEqual(sanitize({ agent: "claude", model: "sonnet", version: "4.6", effort: "max" }), CHOICE("claude", "sonnet", "4.6", "max"));
 });

@@ -1,19 +1,30 @@
 // Pure logic for the Implement pane: the choices, the agent's argv, the launch brief and the start folder.
 // No Herdr imports, so `node --test tests/` can run it.
 
-// Models and efforts each agent offers. Edit here to add one. Claude takes the latest-model aliases.
+// Models and efforts each agent offers. Edit here to add one. Claude lists explicit versions, newest first per family.
 const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
-const claudeModel = (id, label) => ({ id, label, efforts: [...CLAUDE_EFFORTS] });
+const CLAUDE_VERSIONS = {
+  fable: ["5.2", "5.1", "5"],
+  opus: ["5.5", "5", "4.8", "4.7", "4.6", "4.5", "4.1", "4"],
+  sonnet: ["5.5", "5", "4.6", "4.5", "4"],
+  haiku: ["5.5", "4.5"],
+};
+// The id is the real model name for `claude --model`, e.g. "claude-opus-4-1".
+const claudeModels = () =>
+  Object.entries(CLAUDE_VERSIONS).flatMap(([family, versions]) =>
+    versions.map((version) => ({
+      id: `claude-${family}-${version.replace(".", "-")}`,
+      label: `${family.charAt(0).toUpperCase()}${family.slice(1)} ${version}`,
+      family,
+      version,
+      efforts: [...CLAUDE_EFFORTS],
+    })),
+  );
 
 export const AGENTS = {
   claude: {
     label: "Claude",
-    models: [
-      claudeModel("fable", "Fable"),
-      claudeModel("opus", "Opus"),
-      claudeModel("sonnet", "Sonnet"),
-      claudeModel("haiku", "Haiku"),
-    ],
+    models: claudeModels(),
   },
   codex: {
     // Fallback only: the pane replaces this with the list from Codex's own models cache when it can read it.
