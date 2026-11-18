@@ -10,6 +10,7 @@ const PANEL = "right-panel";
 const STACK = "right-views";
 
 const VIEWS = [
+  { id: "asks", title: "Asks", icon: "mods/asks/bell.svg", badge: "asks.badge" },
   { id: "changes", title: "Changes", icon: "mods/changes/changes.svg" },
   { id: "files", title: "Files", icon: "mods/files/file.svg" },
   { id: "prs", title: "Pull requests", icon: "mods/right-rail/git-pull-request.svg", badge: "prs.badge" },

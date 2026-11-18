@@ -169,6 +169,13 @@
                       "type": "stack",
                       "children": [
                         {
+                          "id": "asks",
+                          "type": "block",
+                          "content": {
+                            "mod": "asks"
+                          }
+                        },
+                        {
                           "id": "changes",
                           "type": "block",
                           "content": {
