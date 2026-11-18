@@ -136,7 +136,17 @@ test("buildBrief handles an empty description and an empty story for codex", () 
 
 test("buildArgv adds --add-dir for claude only", () => {
   const base = { run: ["claude"], agent: "claude", model: "claude-opus-5-5", effort: "high" };
-  assert.deepEqual(buildArgv({ ...base, addDir: "/d" }), [...buildArgv(base), "--add-dir", "/d"]);
+  assert.deepEqual(buildArgv({ ...base, addDir: "/d" }), [
+    "claude",
+    "--add-dir",
+    "/d",
+    "--model",
+    "claude-opus-5-5",
+    "--effort",
+    "high",
+  ]);
+  // The last argument must not be a value of --add-dir, because the first message is appended after it.
+  assert.equal(buildArgv({ ...base, addDir: "/d" }).at(-2), "--effort");
   assert.ok(!buildArgv(base).includes("--add-dir"));
   const codex = { run: ["codex"], agent: "codex", model: "m", effort: "low" };
   assert.deepEqual(buildArgv({ ...codex, addDir: "/d" }), buildArgv(codex));

@@ -196,9 +196,11 @@ export function isReady(choice, catalog = AGENTS) {
 
 // `run` is the agent's own command from Herdr's program table (knownAgents()).
 // `addDir` lets claude read the brief folder without a permission prompt; codex ignores it.
+// Herdr appends the first message after argv, and claude's --add-dir takes any number of values, so it would
+// swallow that message as another folder. It therefore goes first, closed off by the single-value flags after it.
 export function buildArgv({ run, agent, model, effort, addDir }) {
   if (agent === "claude") {
-    return [...run, "--model", model, "--effort", effort, ...(addDir ? ["--add-dir", addDir] : [])];
+    return [...run, ...(addDir ? ["--add-dir", addDir] : []), "--model", model, "--effort", effort];
   }
   return [...run, "-m", model, "-c", `model_reasoning_effort="${effort}"`];
 }
