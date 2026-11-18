@@ -20,6 +20,7 @@ Or by hand: copy `layouts/board-desk.json` into `~/.config/herdr-app/layouts/` a
 ## Configure
 
 - **Board**: copy `mods/shortcut-board/config.example.json` to `config.json` and set your `team` (name, mention name or id) and the `columns` (workflow state names) to show. Put your Shortcut API token in `$SHORTCUT_API_TOKEN` or in the file `token_file` points at. Set `"demo": true` to try it with made-up stories.
+- **Implement** (assigned stories): the Implement button on your cards opens a pane to pick the agent, model and effort, then starts it in a new tab in the axial-main folder (`implement_root` in the board config, default `~/source/axial-main`). Before starting it pulls `integration` in `axial-api.git` and `fe-app.git`. Claude runs `/axialpower:implement-ticket` (needs the `axialpower` plugin); Codex gets the story text instead. Each launch saves its instructions in `~/.cache/herdr-implement/`.
 - **Pull requests** (optional): copy `mods/my-prs/config.example.json` to `config.json` and set `org` to search one GitHub organization only. Needs `gh` signed in.
 - **Usage panel**: nothing to set. It reads the logins Claude Code (macOS keychain) and Codex (`~/.codex/auth.json`) already have.
 

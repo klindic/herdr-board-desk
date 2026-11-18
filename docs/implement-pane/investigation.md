@@ -43,5 +43,7 @@ Work is local. Both `axial-api.git` and `fe-app.git` are kept on `integration` a
 ## Open questions
 
 - Resolved: the tile starts in the axial-main root (`tab.new` takes a `folder`). The repo is not known up front, and the agent decides it, so no single repo folder fits. Still to confirm that implement-ticket's worktree setup works from there. Work started outside the board still uses the normal repo spaces.
-- Resolved: the notes box is a multi-line text area. Still open: whether `tab.new`'s `task` is typed into the agent after start, or passed as the initial argument. Either works; it decides whether the first message appears in shell history.
+- Resolved: the notes box is a multi-line text area. Resolved: the first message is one line pointing at a launch brief file, so no multi-line text is ever typed into the agent.
+- Verified: `bin/create-worktree` lives at the axial-main root (not in each repo), branches from the checkout's local HEAD, and only accepts branch names matching `^[a-z][a-z0-9_-]*$`. Shortcut suggests names like `sc-37494-remove-phones-whose-app-was-deleted`, which fit.
+- Still to verify in the app: that implement-ticket's worktree setup works when started from the axial-main root.
 - Valid model names per agent and how to keep the list current. Proposal: a small static list in the mod's config.

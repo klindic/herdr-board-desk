@@ -31,20 +31,11 @@ Calls `run("tab.new", { name, folder, argv, task })` with focus on the new tab. 
 
 - argv: the agent's command with model and effort flags.
 - folder: the axial-main root, always. The repo is chosen by the agent, so the tile does not live under axial-api or fe-app.
-- name: the story id and a short title.
+- name: the story id.
 
-First message for Claude:
+The full instructions go into a launch brief file, `~/.cache/herdr-implement/sc-<id>-<timestamp>.md`, because a multi-line message typed into an agent can submit early. The brief holds the story, the branch name (Shortcut's suggestion with anything outside letters, digits, `_` and `-` turned into `-`), the rule to base the worktree on the latest `integration` with `$AXIAL_ORCHESTRATION_ROOT/bin/create-worktree <branch>`, the plan-only and run-to-completion lines, and your optional prompt after a blank line. For Codex it also holds the story title and description, since Codex cannot read Shortcut. If a pull failed, it tells the agent to `git pull --ff-only` in that checkout first.
 
-```
-/axialpower:implement-ticket sc-<id>
-Use the branch name <formatted_vcs_branch_name>.
-Always base the worktree on the latest `integration` (use `bin/create-worktree <branch>` from the repo's `.git` checkout). Only branch from something else if the optional prompt says so.
-[Plan only] Stop after the implementation plan is written and wait for me.
-[Run to completion] Do not ask questions; decide, and log assumptions.
-[Optional prompt] a blank line, then your text verbatim (omitted when empty)
-```
-
-For Codex the first line is replaced by "Implement Shortcut story sc-<id> (<url>)", since the skill is not available.
+The first message is one line. For Claude: `/axialpower:implement-ticket sc-<id> First read the launch brief at <path> and follow it.` For Codex: `Implement Shortcut story sc-<id> (<url>). First read the launch brief at <path> and follow it.`
 
 The agent picks the repo itself, and implement-ticket does the worktree setup and asks questions as usual, in the tile.
 
