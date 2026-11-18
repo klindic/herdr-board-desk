@@ -1,6 +1,8 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex, TextView } from "gpui-base";
-import { theme, exec, appHome, checking, layout } from "herdr";
+import { theme, exec, appHome, checking, layout, home } from "herdr";
+import { ImplementPane } from "./implement-pane.js";
+import { startFolder } from "./implement.js";
 
 const REFRESH_MS = 2 * 60 * 1000;
 const DETAIL_FRESH_MS = 60 * 1000;
@@ -77,6 +79,8 @@ const stop = (_e, cx) => cx.stop_propagation();
 export default class ShortcutBoard extends View {
   init(_props, cx) {
     this.script = `${appHome()}/mods/shortcut-board/fetch_board.py`;
+    this.implement = new ImplementPane();
+    this.implement.init();
     this.filter = "all";
     this.selected = null;
     this.details = {};
@@ -124,7 +128,23 @@ export default class ShortcutBoard extends View {
     });
   }
 
+  root() {
+    return startFolder(this.board?.implement_root, home());
+  }
+
+  deselect(cx) {
+    this.selected = null;
+    this.implement.close();
+    cx.notify();
+  }
+
+  openImplement(id, cx) {
+    if (this.selected !== id) this.select(id, cx);
+    this.implement.open(id, cx);
+  }
+
   select(id, cx) {
+    if (!this.implement.isOpen(id)) this.implement.close();
     this.selected = id;
     this.scrollY.detail = 0;
     this.loadDetail(id, cx);
@@ -190,6 +210,14 @@ export default class ShortcutBoard extends View {
       .child(label);
   }
 
+  implementButton(key, id) {
+    const t = theme();
+    return div().id(key).h(26).px(10).flex().items_center().rounded(6).text_size(12).font_semibold().cursor_pointer()
+      .bg(t.accent).text_color(t.background)
+      .on_click((_e, cx) => { cx.stop_propagation(); this.openImplement(id, cx); })
+      .child("Implement");
+  }
+
   card(c) {
     const t = theme();
     const selected = this.selected === c.id;
@@ -208,6 +236,7 @@ export default class ShortcutBoard extends View {
         .child(div().size(7).flex_none().rounded_full().bg(t.blocked))
         .child(c.blocked ? "Blocked" : "Blocking another story")))
       .child(h_flex().gap(6).flex_wrap()
+        .when(c.mine, (el) => el.child(this.implementButton(`sc-${c.id}-implement`, c.id)))
         .child(this.linkButton(`sc-${c.id}-open`, "Shortcut", c.url))
         .children(c.prs.map((p) => this.linkButton(`sc-${c.id}-pr-${p.repo}-${p.number}`, `PR #${p.number}`, p.url))));
   }
@@ -350,10 +379,11 @@ export default class ShortcutBoard extends View {
         .child(state)))
       .child(div().flex_1())
       .when(Boolean(entry.loading), (el) => el.child(svg("mods/workspace-chrome/spinner.svg").size(13).text_color(t.dim).spin(900)))
+      .when(Boolean(found?.card.mine), (el) => el.child(this.implementButton(`detail-implement-${id}`, id)))
       .when(Boolean(url), (el) => el.child(this.linkButton(`detail-open-${id}`, "Open in Shortcut", url)))
       .child(div().id("detail-close").size(26).flex_none().flex().items_center().justify_center().rounded(6).cursor_pointer()
         .text_color(t.muted).hover((s) => s.bg(t.hover).text_color(t.foreground)).tooltip("Close")
-        .on_click((_e, cx) => { cx.stop_propagation(); this.selected = null; cx.notify(); })
+        .on_click((_e, cx) => { cx.stop_propagation(); this.deselect(cx); })
         .child(svg("mods/pane/close.svg").size(14)));
 
     const body = v_flex().id(`detail-content-${id}`).pl(22).pr(22 - DETAIL_GUTTER).pt(20).pb(28).gap(16)
@@ -424,9 +454,9 @@ export default class ShortcutBoard extends View {
         if (base !== this.baseWidth) { this.baseWidth = base; cx.notify(); }
       })
       // A click anywhere but a card or the open story clears the selection.
-      .on_click((_e, cx) => { if (this.selected !== null) { this.selected = null; cx.notify(); } })
+      .on_click((_e, cx) => { if (this.selected !== null) this.deselect(cx); })
       .font_family(FONT).gap(PANE_GAP)
       .child(board)
-      .when(open, (el) => el.child(this.detailPanel()));
+      .when(open, (el) => el.child(this.implement.isOpen(this.selected) ? this.implement.render(this) : this.detailPanel()));
   }
 }
