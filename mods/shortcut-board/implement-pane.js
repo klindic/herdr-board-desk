@@ -2,7 +2,7 @@
 // Start brings integration up to date, writes a launch brief and opens the agent in a new tab.
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
-import { theme, exec, home, run, focused, knownAgents, writeTextFile } from "herdr";
+import { theme, exec, home, run, focused, knownAgents, readTextFile, writeTextFile } from "herdr";
 import {
   AGENTS,
   BASE_REPOS,
@@ -11,10 +11,13 @@ import {
   buildBrief,
   buildTask,
   choose,
+  effortsFor,
   isReady,
   normalizeBranch,
+  parseCodexModels,
   sanitize,
   summarizePulls,
+  withCodexModels,
 } from "./implement.js";
 
 const LAST_KEY = "implement-last";
@@ -27,6 +30,7 @@ const icon = (name) => `mods/shortcut-board/icons/${name}.svg`;
 export class ImplementPane {
   init() {
     this.storyId = null;
+    this.catalog = AGENTS;
     this.choice = { agent: null, model: null, effort: null };
     this.planOnly = false;
     this.starting = false;
@@ -60,7 +64,7 @@ export class ImplementPane {
     try {
       last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "null");
     } catch {}
-    this.choice = sanitize(last);
+    this.choice = sanitize(last, this.catalog);
     this.planOnly = false;
     this.starting = false;
     this.error = null;
@@ -71,6 +75,16 @@ export class ImplementPane {
     this.branchOverride = null;
     this.branchError = null;
     this.launched = false;
+    cx.spawn(async (cx) => {
+      // Codex keeps its real model list in its own cache. readTextFile gives nothing for a file over 1 MiB;
+      // then (or on any failure) the fallback list in AGENTS stays.
+      try {
+        const text = await readTextFile(`${home()}/.codex/models_cache.json`);
+        this.catalog = withCodexModels(AGENTS, parseCodexModels(text ?? ""));
+        if (this.isOpen(id)) this.choice = sanitize(this.choice, this.catalog);
+      } catch {}
+      cx.notify();
+    });
     cx.spawn(async (cx) => {
       try {
         const list = await knownAgents();
@@ -123,15 +137,15 @@ export class ImplementPane {
   }
 
   pick(step, value, cx) {
-    this.choice = choose(this.choice, step, value);
+    this.choice = choose(this.choice, step, value, this.catalog);
     this.launched = false;
     cx.notify();
   }
 
   options(step) {
-    if (step === "agent") return Object.entries(AGENTS).map(([id, agent]) => ({ id, label: agent.label }));
-    if (step === "model") return AGENTS[this.choice.agent].models;
-    return AGENTS[this.choice.agent].efforts.map((id) => ({ id, label: id }));
+    if (step === "agent") return Object.entries(this.catalog).map(([id, agent]) => ({ id, label: agent.label }));
+    if (step === "model") return this.catalog[this.choice.agent].models;
+    return effortsFor(this.catalog, this.choice.agent, this.choice.model).map((id) => ({ id, label: id }));
   }
 
   optionChip(view, step, option) {

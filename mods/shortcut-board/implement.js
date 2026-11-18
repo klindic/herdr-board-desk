@@ -2,23 +2,57 @@
 // No Herdr imports, so `node --test tests/` can run it.
 
 // Models and efforts each agent offers. Edit here to add one. Claude takes the latest-model aliases.
+const CLAUDE_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const claudeModel = (id, label) => ({ id, label, efforts: [...CLAUDE_EFFORTS] });
+
 export const AGENTS = {
   claude: {
     label: "Claude",
     models: [
-      { id: "fable", label: "Fable" },
-      { id: "opus", label: "Opus" },
-      { id: "sonnet", label: "Sonnet" },
-      { id: "haiku", label: "Haiku" },
+      claudeModel("fable", "Fable"),
+      claudeModel("opus", "Opus"),
+      claudeModel("sonnet", "Sonnet"),
+      claudeModel("haiku", "Haiku"),
     ],
-    efforts: ["low", "medium", "high", "xhigh", "max"],
   },
   codex: {
+    // Fallback only: the pane replaces this with the list from Codex's own models cache when it can read it.
     label: "Codex",
-    models: [{ id: "gpt-6.1-sol", label: "gpt-6.1-sol" }],
-    efforts: ["low", "medium", "high"],
+    models: [{ id: "gpt-6.1-sol", label: "gpt-6.1-sol", efforts: ["low", "medium", "high", "xhigh", "max", "ultra"] }],
   },
 };
+
+// The efforts a model supports in the given catalog, or [] when the agent or model is unknown.
+export function effortsFor(catalog, agent, model) {
+  return catalog[agent]?.models.find((m) => m.id === model)?.efforts ?? [];
+}
+
+// Codex's visible models with their reasoning efforts, from the text of ~/.codex/models_cache.json. [] on anything unexpected.
+export function parseCodexModels(text) {
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(data?.models)) return [];
+  const out = [];
+  for (const entry of data.models) {
+    if (!entry || typeof entry.slug !== "string" || !entry.slug) continue;
+    if (entry.visibility !== undefined && entry.visibility !== "list") continue;
+    const levels = Array.isArray(entry.supported_reasoning_levels) ? entry.supported_reasoning_levels : [];
+    const efforts = levels.map((l) => l?.effort).filter((e) => typeof e === "string" && e);
+    if (efforts.length === 0) continue;
+    out.push({ id: entry.slug, label: entry.display_name || entry.slug, efforts });
+  }
+  return out;
+}
+
+// A new catalog with Codex's models replaced by `models`; the catalog itself when `models` is empty.
+export function withCodexModels(catalog, models) {
+  if (!Array.isArray(models) || models.length === 0) return catalog;
+  return { ...catalog, codex: { ...catalog.codex, models } };
+}
 
 export const STEPS = ["agent", "model", "effort"];
 
@@ -57,18 +91,22 @@ export function summarizePulls(results) {
   return `Could not update ${parts.join(" and ")}`;
 }
 
-// A remembered choice, with anything the agent no longer offers dropped.
-export function sanitize(last) {
-  const agent = AGENTS[last?.agent] ? last.agent : null;
+// A remembered choice, with anything the catalog no longer offers dropped.
+export function sanitize(last, catalog = AGENTS) {
+  const agent = catalog[last?.agent] ? last.agent : null;
   if (!agent) return { agent: null, model: null, effort: null };
-  const model = AGENTS[agent].models.some((m) => m.id === last.model) ? last.model : null;
-  const effort = AGENTS[agent].efforts.includes(last.effort) ? last.effort : null;
+  const model = catalog[agent].models.some((m) => m.id === last.model) ? last.model : null;
+  const effort = effortsFor(catalog, agent, model).includes(last.effort) ? last.effort : null;
   return { agent, model, effort };
 }
 
-export function choose(choice, step, value) {
+export function choose(choice, step, value, catalog = AGENTS) {
   if (step === "agent") {
     return value === choice.agent ? choice : { agent: value, model: null, effort: null };
+  }
+  if (step === "model") {
+    const keep = effortsFor(catalog, choice.agent, value).includes(choice.effort);
+    return { ...choice, model: value, effort: keep ? choice.effort : null };
   }
   return { ...choice, [step]: value };
 }

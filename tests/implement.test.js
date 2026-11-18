@@ -6,12 +6,15 @@ import {
   buildBrief,
   buildTask,
   choose,
+  effortsFor,
   isReady,
   nextStep,
   normalizeBranch,
+  parseCodexModels,
   summarizePulls,
   sanitize,
   startFolder,
+  withCodexModels,
 } from "../mods/shortcut-board/implement.js";
 
 const EMPTY = { agent: null, model: null, effort: null };
@@ -187,6 +190,75 @@ test("startFolder defaults to the axial-main root and expands ~", () => {
 
 test("every agent offers at least one model and one effort", () => {
   for (const agent of Object.values(AGENTS)) {
-    assert.ok(agent.models.length > 0 && agent.efforts.length > 0);
+    assert.ok(agent.models.length > 0);
+    assert.equal(agent.efforts, undefined);
+    for (const model of agent.models) assert.ok(model.efforts.length > 0);
   }
+});
+
+const CACHE = JSON.stringify({
+  models: [
+    { slug: "gpt-a", display_name: "GPT-A", visibility: "list", supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }] },
+    { slug: "gpt-hidden", display_name: "Hidden", visibility: "hide", supported_reasoning_levels: [{ effort: "low" }] },
+    { slug: "gpt-b", visibility: "list", supported_reasoning_levels: [{ effort: "medium" }] },
+    { slug: "gpt-none", visibility: "list", supported_reasoning_levels: [] },
+    { slug: "gpt-novis", display_name: "NoVis", supported_reasoning_levels: [{ effort: "max" }] },
+  ],
+});
+
+test("parseCodexModels hides hidden entries, keeps order, uses display_name", () => {
+  assert.deepEqual(parseCodexModels(CACHE), [
+    { id: "gpt-a", label: "GPT-A", efforts: ["low", "high"] },
+    { id: "gpt-b", label: "gpt-b", efforts: ["medium"] },
+    { id: "gpt-novis", label: "NoVis", efforts: ["max"] },
+  ]);
+});
+
+test("parseCodexModels gives [] for bad JSON or an unexpected shape", () => {
+  assert.deepEqual(parseCodexModels("not json"), []);
+  assert.deepEqual(parseCodexModels(""), []);
+  assert.deepEqual(parseCodexModels("null"), []);
+  assert.deepEqual(parseCodexModels('{"models": 3}'), []);
+  assert.deepEqual(parseCodexModels('{"models": [null, 4]}'), []);
+});
+
+test("withCodexModels returns a new catalog without mutating AGENTS", () => {
+  const models = [{ id: "x", label: "X", efforts: ["low"] }];
+  const before = JSON.stringify(AGENTS);
+  const catalog = withCodexModels(AGENTS, models);
+  assert.notEqual(catalog, AGENTS);
+  assert.deepEqual(catalog.codex.models, models);
+  assert.equal(catalog.claude, AGENTS.claude);
+  assert.equal(JSON.stringify(AGENTS), before);
+  assert.equal(withCodexModels(AGENTS, []), AGENTS);
+});
+
+test("effortsFor returns the model's efforts or []", () => {
+  assert.deepEqual(effortsFor(AGENTS, "codex", "gpt-6.1-sol"), ["low", "medium", "high", "xhigh", "max", "ultra"]);
+  assert.deepEqual(effortsFor(AGENTS, "claude", "opus"), ["low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(effortsFor(AGENTS, "claude", "nope"), []);
+  assert.deepEqual(effortsFor(AGENTS, "nope", "opus"), []);
+  assert.deepEqual(effortsFor(AGENTS, "claude", null), []);
+});
+
+const SMALL = withCodexModels(AGENTS, [
+  { id: "small", label: "Small", efforts: ["low", "medium"] },
+  { id: "big", label: "Big", efforts: ["low", "medium", "high"] },
+]);
+
+test("sanitize drops an effort the chosen model lacks, using the given catalog", () => {
+  assert.deepEqual(sanitize({ agent: "codex", model: "small", effort: "high" }, SMALL), {
+    agent: "codex",
+    model: "small",
+    effort: null,
+  });
+  assert.deepEqual(sanitize({ agent: "codex", model: "big", effort: "high" }, SMALL).effort, "high");
+  assert.equal(sanitize({ agent: "codex", model: "gpt-6.1-sol", effort: "low" }, SMALL).model, null);
+});
+
+test("choose clears the effort when the new model lacks it", () => {
+  const start = { agent: "codex", model: "big", effort: "high" };
+  assert.deepEqual(choose(start, "model", "small", SMALL), { agent: "codex", model: "small", effort: null });
+  assert.deepEqual(choose(start, "model", "big", SMALL), start);
+  assert.deepEqual(choose({ ...start, effort: "low" }, "model", "small", SMALL).effort, "low");
 });
