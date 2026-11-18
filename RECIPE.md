@@ -97,3 +97,5 @@ Start does this, in order: checks the chosen agent is installed; checks `axial-a
 - With a real `team` and token, the header shows that team's name and the columns match `columns`.
 - The usage panel shows CPU, RAM and GPU with mini graphs that grow every 3 seconds, then Claude 5 h, Claude 7 days and Codex 7 days rows with colored bars and time left, and the block is exactly tall enough.
 - The right rail toggles Pull requests and Sessions, and its badge counts PRs waiting for your review.
+- A card you own shows an Implement button; clicking it opens the Implement pane at 40% with the stepper, the branch (with a pencil), Interactive, Plan only and the optional prompt. Start stays disabled until every step is chosen.
+- Pressing Start opens a new `sc-<id>` tab in the axial-main folder, with the chosen agent, model and effort, whose first message points at a launch brief in `~/.cache/herdr-implement/`.

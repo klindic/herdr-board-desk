@@ -1,5 +1,7 @@
 # Implement Pane Implementation Plan
 
+> **Status: built.** This is the original plan, kept for history. The pane has since changed (Version step, Claude and Codex model lists, editable branch, a switch for Plan only, `--add-dir` ordering); see `design.md` and `RECIPE.md` for what it does now. Task 6 (the manual end-to-end check) is done by running Start from the board.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use axialpower:subagent-driven-development (recommended) or axialpower:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** An Implement button on board tickets assigned to you opens a 40% pane (agent, model, effort, toggles, optional prompt) whose Start button launches Claude or Codex in a new tab, running `axialpower:implement-ticket` against the Shortcut story from the latest `integration`.

@@ -31,6 +31,10 @@ Before installing, know that these mods run programs and reach the network: the 
 
 `RECIPE.md` describes the whole layout in enough detail to rebuild it from scratch.
 
+## Development
+
+`npm test` runs the node tests for the Implement logic and the Python test for the fetch script. The mods themselves only run inside Herdr; `herdr-app check mods/shortcut-board` loads one once and reports problems.
+
 ## License
 
 MIT, see `LICENSE`. The usage panel's look is adapted from [chelebyy/herdr-agent-workspace](https://github.com/chelebyy/herdr-agent-workspace) (Apache 2.0) and [Lakris2407/herdr-quota](https://github.com/Lakris2407/herdr-quota) (MIT); the bundled Inter font is under the SIL Open Font License. See `NOTICE`.
