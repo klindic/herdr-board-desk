@@ -167,39 +167,64 @@ export default class Sessions extends View {
   row(t, s) {
     const live = !!s.pid;
     const where = s.cwd === this.root ? null : s.cwd.slice(this.root.length + 1);
+    const agentName = s.agent === "codex" ? "Codex" : "Claude";
+    const chip = (label, color) =>
+      div().flex_none().px(6).py(1).rounded(4).bg(t.chrome).text_size(10).text_color(color).child(label);
     return h_flex()
       .id(`session-${s.agent}-${s.id}`)
-      .mx(6)
-      .px(6)
-      .py(5)
-      .gap(8)
-      .items_start()
-      .rounded(6)
+      .mx(8)
+      .px(8)
+      .py(8)
+      .gap(10)
+      .items_center()
+      .rounded(8)
+      .border(1)
+      .border_color(live ? t.working : t.border)
+      .bg(t.raised)
       .cursor_pointer()
-      .hover((st) => st.bg(t.hover))
+      .hover((st) => st.bg(t.hover).border_color(live ? t.working : t.muted))
       .on_click((_e, cx) => this.open(s, cx))
-      .child(image(ICONS[s.agent]).w(14).h(14).mt(1).flex_none())
+      .child(
+        div()
+          .flex_none()
+          .w(28)
+          .h(28)
+          .flex()
+          .items_center()
+          .justify_center()
+          .rounded(7)
+          .bg(t.chrome)
+          .child(image(ICONS[s.agent]).w(16).h(16)),
+      )
       .child(
         v_flex()
           .flex_1()
           .min_w(0)
-          .gap(1)
+          .gap(4)
           .child(
             h_flex()
               .gap(8)
               .items_center()
-              .child(div().flex_1().min_w(0).text_size(12).text_color(t.foreground).truncate().child(s.title))
+              .child(div().flex_1().min_w(0).text_size(12).font_semibold().text_color(t.foreground).truncate().child(s.title))
               .child(div().flex_none().text_size(11).text_color(t.dim).child(ago(s.updated))),
           )
-          .when(live || !!where, (el) =>
-            el.child(
-              h_flex()
-                .gap(6)
-                .text_size(11)
-                .text_color(t.dim)
-                .when(live, (el) => el.child(div().flex_none().text_color(t.working).child(this.terminalOf(s) ? "running, click to show" : "running")))
-                .when(!!where, (el) => el.child(div().truncate().child(where))),
-            ),
+          .child(
+            h_flex()
+              .gap(5)
+              .items_center()
+              .min_w(0)
+              .when(live, (el) =>
+                el.child(
+                  h_flex()
+                    .flex_none()
+                    .gap(4)
+                    .items_center()
+                    .child(div().flex_none().w(6).h(6).rounded(3).bg(t.working))
+                    .child(div().text_size(10).text_color(t.working).child(this.terminalOf(s) ? "Running" : "Running elsewhere")),
+                ),
+              )
+              .when(!live, (el) => el.child(chip(agentName, t.muted)))
+              .when(!!where, (el) => el.child(div().min_w(0).text_size(10).text_color(t.dim).truncate().child(where))),
           ),
       )
       .child(
@@ -211,7 +236,7 @@ export default class Sessions extends View {
           .flex()
           .items_center()
           .justify_center()
-          .rounded(4)
+          .rounded(5)
           .text_size(16)
           .text_color(t.muted)
           .cursor_pointer()
@@ -254,8 +279,18 @@ export default class Sessions extends View {
           .children(
             groups.map((g) =>
               v_flex()
-                .gap(2)
-                .child(div().px(12).pt(10).pb(4).text_size(11).font_semibold().text_color(t.muted).child(g.label.toUpperCase()))
+                .gap(6)
+                .child(
+                  h_flex()
+                    .px(14)
+                    .pt(14)
+                    .pb(2)
+                    .gap(6)
+                    .items_center()
+                    .child(div().text_size(10).font_semibold().text_color(t.muted).child(g.label.toUpperCase()))
+                    .child(div().text_size(10).text_color(t.dim).child(String(g.items.length)))
+                    .child(div().flex_1().h(1).bg(t.border)),
+                )
                 .children(g.items.map((s) => this.row(t, s))),
             ),
           ),

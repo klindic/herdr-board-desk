@@ -1,5 +1,5 @@
 // Icon rail on the far right: each icon shows its view in the right panel; clicking the shown one hides the panel.
-// To add a view: add a block under "right-views" in layouts/board-desk.json and an entry to VIEWS.
+// To add a view: add a block under "right-views" in layouts/my-main.json and an entry to VIEWS.
 
 import { View, div, svg } from "gpui-kit";
 import { v_flex } from "gpui-base";
@@ -10,8 +10,11 @@ const PANEL = "right-panel";
 const STACK = "right-views";
 
 const VIEWS = [
+  { id: "changes", title: "Changes", icon: "mods/changes/changes.svg" },
+  { id: "files", title: "Files", icon: "mods/files/file.svg" },
   { id: "prs", title: "Pull requests", icon: "mods/right-rail/git-pull-request.svg", badge: "prs.badge" },
   { id: "sessions", title: "Sessions", icon: "mods/right-rail/history.svg" },
+  { id: "meetings", title: "Meetings", icon: "mods/meetings/meetings.svg" },
 ];
 
 function find(node, id) {

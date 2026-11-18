@@ -223,36 +223,59 @@ export default class MyPrs extends View {
       .children(prs.map((p) => this.row(t, p, showReview)));
   }
 
+  // A small rounded label tinted with its own color (falls back to a plain raised pill).
+  chip(t, text, color) {
+    const tint = /^#[0-9a-fA-F]{6}$/.test(color) ? `${color}26` : t.raised;
+    return div()
+      .flex_none()
+      .px(6)
+      .py(1)
+      .rounded(8)
+      .bg(tint)
+      .text_size(10)
+      .font_semibold()
+      .text_color(color)
+      .child(text);
+  }
+
   row(t, p, showReview) {
-    const meta = [p.draft ? "draft" : null, showReview && !p.draft ? REVIEW_LABEL[p.review] : null].filter(Boolean);
+    const ci = ciColor(t, p.ci);
+    const ciText = { SUCCESS: "checks passing", FAILURE: "checks failing", ERROR: "checks failing", PENDING: "checks running", EXPECTED: "checks running" }[p.ci];
+    const chips = [];
+    if (p.draft) chips.push(this.chip(t, "draft", t.muted));
+    else if (showReview && REVIEW_LABEL[p.review]) chips.push(this.chip(t, REVIEW_LABEL[p.review], reviewColor(t, p.review)));
+    if (ciText) chips.push(this.chip(t, ciText, ci));
     return h_flex()
       .id(`pr-${p.key}`)
-      .mx(6)
-      .px(6)
-      .py(5)
-      .gap(8)
-      .items_start()
-      .rounded(6)
+      .mx(8)
+      .mt(6)
+      .rounded(8)
+      .overflow_hidden()
+      .bg(t.raised)
+      .border(1)
+      .border_color(t.border)
       .cursor_pointer()
-      .hover((s) => s.bg(t.hover))
+      .hover((s) => s.border_color(t.muted))
       .on_click(() => this.open(p.url))
-      .child(div().mt(5).w(7).h(7).flex_none().rounded(4).bg(ciColor(t, p.ci)))
+      .child(div().flex_none().w(3).bg(ci))
       .child(
         v_flex()
           .flex_1()
           .min_w(0)
-          .gap(1)
-          .child(div().text_size(12).text_color(p.draft ? t.muted : t.foreground).truncate().child(p.title))
+          .px(10)
+          .py(8)
+          .gap(5)
+          .child(div().text_size(12).font_semibold().text_color(p.draft ? t.muted : t.foreground).truncate().child(p.title))
           .child(
             h_flex()
               .gap(6)
               .text_size(11)
               .text_color(t.dim)
               .child(`${p.repo} #${p.number}`)
-              .children(meta.map((m) => div().text_color(m === "draft" ? t.dim : reviewColor(t, p.review)).child(m)))
               .child(div().flex_1())
               .child(ago(p.updated)),
-          ),
+          )
+          .when(chips.length > 0, (el) => el.child(h_flex().gap(6).children(chips))),
       );
   }
 

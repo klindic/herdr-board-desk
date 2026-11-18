@@ -1,5 +1,5 @@
 // Segmented switch left of the tab bar: picks what the main view's stack shows.
-// To add a view: add a child under "main-view" in layouts/board-desk.json and an entry to VIEWS.
+// To add a view: add a child under "main-view" in layouts/my-main.json and an entry to VIEWS.
 
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";

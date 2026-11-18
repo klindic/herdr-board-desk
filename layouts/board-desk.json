@@ -23,31 +23,17 @@
         },
         {
           "id": "sidebar-lists",
-          "type": "column",
-          "children": [
-            {
-              "id": "spaces",
-              "type": "block",
-              "content": {
-                "mod": "spaces"
-              },
-              "size": {
-                "weight": 1
-              },
-              "min": 90
-            },
-            {
-              "id": "agents",
-              "type": "block",
-              "content": {
-                "mod": "agents"
-              },
-              "size": {
-                "weight": 1
-              },
-              "min": 90
+          "type": "block",
+          "content": {
+            "mod": "better-sidebar",
+            "props": {
+              "view": "lists"
             }
-          ]
+          },
+          "size": {
+            "weight": 1
+          },
+          "min": 90
         },
         {
           "id": "usage",
@@ -88,11 +74,6 @@
         {
           "id": "top-bar",
           "type": "row",
-          "size": {
-            "px": 42
-          },
-          "resizable": false,
-          "window_drag": true,
           "children": [
             {
               "id": "view-switch",
@@ -111,96 +92,152 @@
               "content": {
                 "mod": "tabs"
               },
-              "window_drag": true,
               "size": {
                 "weight": 1
-              }
+              },
+              "window_drag": true
             }
-          ]
+          ],
+          "size": {
+            "px": 42
+          },
+          "resizable": false,
+          "window_drag": true
         },
         {
-          "id": "work-body",
+          "id": "work-main",
           "type": "row",
+          "resizable": false,
+          "gap": 0,
+          "size": {
+            "weight": 1
+          },
           "children": [
             {
-              "id": "main-view",
-              "type": "stack",
-              "active": "main",
+              "id": "work-body",
+              "type": "row",
               "children": [
                 {
-                  "id": "main",
-                  "type": "block",
-                  "content": {
-                    "tab": "active",
-                    "pane": {
-                      "header": {
-                        "content": {
-                          "mod": "pane"
-                        },
-                        "reveal": "always",
-                        "height": 30,
-                        "position": "top"
-                      },
-                      "background": "background",
-                      "border": {
-                        "width": 1,
-                        "color": "border"
-                      },
-                      "focus": {
-                        "width": 1,
-                        "color": "accent"
-                      },
-                      "radius": 10,
-                      "gap": 8,
-                      "lone": true
-                    }
-                  }
-                },
-                {
-                  "id": "board",
-                  "type": "block",
-                  "content": {
-                    "mod": "shortcut-board"
-                  }
-                }
-              ]
-            },
-            {
-              "id": "panel",
-              "type": "column",
-              "children": [
-                {
-                  "id": "panel-body",
+                  "id": "main-view",
                   "type": "stack",
                   "children": [
                     {
-                      "id": "files",
+                      "id": "main",
                       "type": "block",
                       "content": {
-                        "mod": "files"
+                        "tab": "active",
+                        "pane": {
+                          "header": {
+                            "content": {
+                              "mod": "pane"
+                            },
+                            "reveal": "always",
+                            "height": 30,
+                            "position": "top"
+                          },
+                          "background": "background",
+                          "border": {
+                            "width": 1,
+                            "color": "border"
+                          },
+                          "focus": {
+                            "width": 1,
+                            "color": "accent"
+                          },
+                          "radius": 10,
+                          "gap": 8,
+                          "lone": true
+                        }
                       }
                     },
                     {
-                      "id": "changes",
+                      "id": "board",
                       "type": "block",
                       "content": {
-                        "mod": "changes"
+                        "mod": "shortcut-board"
                       }
                     }
                   ],
-                  "active": "files"
+                  "active": "main"
+                },
+                {
+                  "id": "right-panel",
+                  "type": "column",
+                  "children": [
+                    {
+                      "id": "right-views",
+                      "type": "stack",
+                      "children": [
+                        {
+                          "id": "changes",
+                          "type": "block",
+                          "content": {
+                            "mod": "better-changes"
+                          }
+                        },
+                        {
+                          "id": "files",
+                          "type": "block",
+                          "content": {
+                            "mod": "better-files"
+                          }
+                        },
+                        {
+                          "id": "prs",
+                          "type": "block",
+                          "content": {
+                            "mod": "my-prs"
+                          }
+                        },
+                        {
+                          "id": "sessions",
+                          "type": "block",
+                          "content": {
+                            "mod": "sessions"
+                          }
+                        },
+                        {
+                          "id": "meetings",
+                          "type": "block",
+                          "content": {
+                            "mod": "meetings"
+                          }
+                        }
+                      ],
+                      "active": "prs"
+                    }
+                  ],
+                  "size": {
+                    "px": 368
+                  },
+                  "min": 200,
+                  "max": 480,
+                  "background": "background",
+                  "radius": 10,
+                  "border": {
+                    "width": 1,
+                    "color": "border"
+                  }
                 }
               ],
+              "padding": 8,
+              "gap": 8,
               "size": {
-                "px": 368
+                "weight": 1
+              }
+            },
+            {
+              "id": "right-rail",
+              "type": "block",
+              "content": {
+                "mod": "right-rail"
               },
-              "min": 280,
-              "max": 900,
-              "hidden": true
+              "size": {
+                "px": 44
+              },
+              "background": "chrome"
             }
-          ],
-          "padding": 8,
-          "gap": 8
+          ]
         },
         {
           "id": "status",
@@ -214,50 +251,6 @@
         }
       ],
       "resizable": false
-    },
-    {
-      "id": "right-panel",
-      "type": "column",
-      "children": [
-        {
-          "id": "right-views",
-          "type": "stack",
-          "children": [
-            {
-              "id": "prs",
-              "type": "block",
-              "content": {
-                "mod": "my-prs"
-              }
-            },
-            {
-              "id": "sessions",
-              "type": "block",
-              "content": {
-                "mod": "sessions"
-              }
-            }
-          ],
-          "active": "prs"
-        }
-      ],
-      "size": {
-        "px": 300
-      },
-      "min": 200,
-      "max": 480,
-      "background": "chrome"
-    },
-    {
-      "id": "right-rail",
-      "type": "block",
-      "content": {
-        "mod": "right-rail"
-      },
-      "size": {
-        "px": 44
-      },
-      "background": "chrome"
     }
   ],
   "background": "canvas",
