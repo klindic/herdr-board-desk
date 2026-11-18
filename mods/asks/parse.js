@@ -37,7 +37,7 @@ const isChrome = (line) => {
   const s = line.trim();
   return (
     s === "" ||
-    /^[-=_—–\s]+$/.test(s) ||
+    /^[-=_\u2014\u2013\s]+$/.test(s) ||
     /^(esc|enter|tab|ctrl|shift)\b.*\b(to|for)\b/i.test(s) ||
     /^use (arrow|the arrow)/i.test(s)
   );
