@@ -8,6 +8,8 @@ import {
   choose,
   isReady,
   nextStep,
+  normalizeBranch,
+  summarizePulls,
   sanitize,
   startFolder,
 } from "../mods/shortcut-board/implement.js";
@@ -77,7 +79,8 @@ test("buildBrief states the story, the branch and the integration rule", () => {
   assert.match(brief, /sc-1188 \(https:\/\/app\.shortcut\.com\/x\/story\/1188\)/);
   assert.match(brief, /Use the branch name sc-1188-retry-webhooks\./);
   assert.match(brief, /latest integration branch/);
-  assert.match(brief, /bin\/create-worktree/);
+  assert.match(brief, /\$AXIAL_ORCHESTRATION_ROOT\/bin\/create-worktree <branch>/);
+  assert.match(brief, /<branch> is the branch name given above/);
   assert.doesNotMatch(brief, /Plan only/);
   assert.doesNotMatch(brief, /## Prompt/);
   assert.doesNotMatch(brief, /could not update integration/);
@@ -92,7 +95,7 @@ test("buildBrief adds the plan-only, run-to-completion and pull-failed lines", (
   assert.match(brief, /Plan only: stop after the implementation plan/);
   assert.match(brief, /Run to completion: do not ask questions/);
   assert.match(brief, /could not update integration/);
-  assert.match(brief, /origin\/integration/);
+  assert.match(brief, /git pull --ff-only/);
 });
 
 test("buildBrief appends the optional prompt verbatim after a blank line", () => {
@@ -102,6 +105,63 @@ test("buildBrief appends the optional prompt verbatim after a blank line", () =>
 
 test("buildBrief ignores a whitespace-only prompt", () => {
   assert.doesNotMatch(buildBrief({ ...BRIEF, prompt: "  \n " }), /## Prompt/);
+});
+
+test("buildBrief gives codex the story text but not claude", () => {
+  const story = { title: "Retry webhooks", description: "  Do the thing.\n\n" };
+  const codex = buildBrief({ ...BRIEF, agent: "codex", prompt: "Extra", ...story });
+  assert.match(codex, /\n\n## Story\n# Retry webhooks\n\nDo the thing\.\n\n## Prompt\nExtra\n$/);
+  assert.doesNotMatch(buildBrief({ ...BRIEF, agent: "claude", ...story }), /## Story/);
+});
+
+test("buildBrief handles an empty description and an empty story for codex", () => {
+  const brief = buildBrief({ ...BRIEF, agent: "codex", title: "T", description: "" });
+  assert.match(brief, /## Story\n# T\n\n\n$/);
+  assert.doesNotMatch(buildBrief({ ...BRIEF, agent: "codex", title: "", description: null }), /## Story/);
+});
+
+test("buildArgv adds --add-dir for claude only", () => {
+  const base = { run: ["claude"], agent: "claude", model: "opus", effort: "high" };
+  assert.deepEqual(buildArgv({ ...base, addDir: "/d" }), [...buildArgv(base), "--add-dir", "/d"]);
+  assert.ok(!buildArgv(base).includes("--add-dir"));
+  const codex = { run: ["codex"], agent: "codex", model: "m", effort: "low" };
+  assert.deepEqual(buildArgv({ ...codex, addDir: "/d" }), buildArgv(codex));
+});
+
+test("summarizePulls reports nothing when every pull worked", () => {
+  assert.equal(summarizePulls([{ repo: "a", ok: true, stderr: "" }, { repo: "b", ok: true, stderr: "x" }]), null);
+});
+
+test("summarizePulls picks the last fatal line after progress lines", () => {
+  const stderr = "From github.com:x/y\n * branch integration -> FETCH_HEAD\nfatal: Not possible to fast-forward, aborting.\n";
+  assert.equal(
+    summarizePulls([{ repo: "axial-api.git", ok: false, stderr }]),
+    "Could not update axial-api.git (fatal: Not possible to fast-forward, aborting.)",
+  );
+});
+
+test("summarizePulls falls back to the last line, or nothing", () => {
+  assert.equal(summarizePulls([{ repo: "a", ok: false, stderr: "" }]), "Could not update a");
+  assert.equal(summarizePulls([{ repo: "a", ok: false, stderr: "one\ntwo\n\n" }]), "Could not update a (two)");
+});
+
+test("summarizePulls joins two failures with and", () => {
+  assert.equal(
+    summarizePulls([
+      { repo: "a", ok: false, stderr: "error: boom" },
+      { repo: "b", ok: true, stderr: "" },
+      { repo: "c", ok: false, stderr: "" },
+    ]),
+    "Could not update a (error: boom) and c",
+  );
+});
+
+test("normalizeBranch makes Shortcut branch names safe for create-worktree", () => {
+  assert.equal(normalizeBranch("kristijan/sc-123/some-title"), "kristijan-sc-123-some-title");
+  assert.equal(normalizeBranch("sc-1188-retry-webhooks"), "sc-1188-retry-webhooks");
+  assert.equal(normalizeBranch("123-abc"), null);
+  assert.equal(normalizeBranch(""), null);
+  assert.equal(normalizeBranch(null), null);
 });
 
 test("buildTask is one line and points at the brief", () => {
@@ -121,6 +181,7 @@ test("buildTask is one line and points at the brief", () => {
 test("startFolder defaults to the axial-main root and expands ~", () => {
   assert.equal(startFolder(undefined, "/Users/me"), "/Users/me/source/axial-main");
   assert.equal(startFolder("~/work/axial-main", "/Users/me"), "/Users/me/work/axial-main");
+  assert.equal(startFolder("~", "/Users/me"), "/Users/me");
   assert.equal(startFolder("/opt/axial-main", "/Users/me"), "/opt/axial-main");
 });
 

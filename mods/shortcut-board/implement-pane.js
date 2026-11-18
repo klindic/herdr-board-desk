@@ -13,7 +13,9 @@ import {
   choose,
   isReady,
   nextStep,
+  normalizeBranch,
   sanitize,
+  summarizePulls,
 } from "./implement.js";
 
 const LAST_KEY = "implement-last";
@@ -29,6 +31,7 @@ export class ImplementPane {
     this.openStep = "agent";
     this.planOnly = false;
     this.starting = false;
+    this.inFlight = new Set();
     this.launched = false;
     this.error = null;
     this.notice = null;
@@ -219,7 +222,8 @@ export class ImplementPane {
 
   startButton(view, story) {
     const t = theme();
-    const ready = isReady(this.choice) && Boolean(story) && !this.starting && !this.launched;
+    const ready = isReady(this.choice) && Boolean(story) && !this.starting && !this.launched &&
+      !(story && this.inFlight.has(story.id));
     return div()
       .id("impl-start")
       .h(36)
@@ -242,7 +246,7 @@ export class ImplementPane {
   // Brings both integration checkouts up to date, writes the launch brief, then opens the agent in a new tab.
   // Everything the async work needs is snapshotted first, so opening another story meanwhile cannot change this run.
   start(story, root, cx) {
-    if (this.starting) return;
+    if (this.starting || this.inFlight.has(story.id)) return;
     const choice = { ...this.choice };
     const planOnly = this.planOnly;
     const prompt = this.prompt.value();
@@ -251,6 +255,7 @@ export class ImplementPane {
     const set = (fields) => {
       if (same()) Object.assign(this, fields);
     };
+    this.inFlight.add(storyId);
     set({ starting: true, error: null, notice: null, warning: null });
     cx.notify();
     cx.spawn(async (cx) => {
@@ -258,40 +263,44 @@ export class ImplementPane {
         const agents = await knownAgents();
         const entry = agents.find((a) => a.key === choice.agent);
         if (!entry || !entry.installed) throw new Error(`${AGENTS[choice.agent].label} is not installed`);
-        const failed = [];
-        let detail = "";
-        await Promise.all(
+        const pulls = await Promise.all(
           BASE_REPOS.map(async (repo) => {
+            const cwd = `${root}/${repo}`;
             try {
-              const r = await exec("git", ["pull", "--ff-only"], { cwd: `${root}/${repo}`, timeout: 120000 });
-              if (r.code !== 0) {
-                failed.push(repo);
-                detail ||= String(r.stderr ?? "").trim().split("\n")[0];
+              const head = await exec("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd, timeout: 30000 });
+              const current = String(head.stdout ?? "").trim();
+              if (current !== "integration") {
+                return { repo, ok: false, stderr: `fatal: checkout is on ${current}, not integration` };
               }
+              const r = await exec("git", ["pull", "--ff-only"], { cwd, timeout: 120000 });
+              return { repo, ok: r.code === 0, stderr: String(r.stderr ?? "") };
             } catch (error) {
-              failed.push(repo);
-              detail ||= String(error?.message ?? error).split("\n")[0];
+              return { repo, ok: false, stderr: `error: ${String(error?.message ?? error)}` };
             }
           }),
         );
+        const pullWarning = summarizePulls(pulls);
         const dir = `${home()}/${BRIEF_DIR}`;
         await exec("mkdir", ["-p", dir]);
         const briefPath = `${dir}/sc-${storyId}-${Date.now()}.md`;
         const brief = buildBrief({
           storyId,
           url: story.url,
-          branch: story.branch,
+          branch: normalizeBranch(story.branch),
           interactive: true,
           planOnly,
           prompt,
-          pullFailed: failed.length > 0,
+          pullFailed: pullWarning !== null,
+          agent: choice.agent,
+          title: story.name,
+          description: story.description,
         });
         await writeTextFile(briefPath, brief, null);
         run("tab.new", {
           name: `sc-${storyId}`,
           space: focused()?.space,
           folder: root,
-          argv: buildArgv({ run: entry.run, ...choice }),
+          argv: buildArgv({ run: entry.run, ...choice, addDir: dir }),
           task: buildTask({ agent: choice.agent, storyId, url: story.url, briefPath }),
           focus: true,
         });
@@ -301,13 +310,13 @@ export class ImplementPane {
         set({
           launched: true,
           notice: `Started sc-${storyId} in a new tab.`,
-          warning: failed.length
-            ? `Could not update ${failed.join(" and ")}; the agent was told to fetch.${detail ? ` ${detail}` : ""}`
-            : null,
+          warning: pullWarning ? `${pullWarning}; the agent was told to pull it first.` : null,
         });
       } catch (error) {
+        console.log("shortcut-board: implement", storyId, String(error));
         set({ error: String(error?.message ?? error) });
       } finally {
+        this.inFlight.delete(storyId);
         set({ starting: false });
         cx.notify();
       }

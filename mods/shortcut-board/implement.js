@@ -30,7 +30,31 @@ const DEFAULT_ROOT = "~/source/axial-main";
 
 export function startFolder(configured, homeDir) {
   const path = configured || DEFAULT_ROOT;
+  if (path === "~") return homeDir;
   return path.startsWith("~/") ? `${homeDir}${path.slice(1)}` : path;
+}
+
+// Shortcut's formatted branch name can hold slashes, which create-worktree rejects. Returns null when nothing usable is left.
+export function normalizeBranch(name) {
+  if (!name) return null;
+  const cleaned = String(name).replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+  return /^[A-Za-z][A-Za-z0-9_-]*$/.test(cleaned) ? cleaned : null;
+}
+
+// One warning line for the pulls that failed, or null when all succeeded.
+// results: [{ repo, ok, stderr }]. Each failure shows the last fatal:/error: line, else the last non-empty line.
+export function summarizePulls(results) {
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length === 0) return null;
+  const parts = failed.map(({ repo, stderr }) => {
+    const lines = String(stderr ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const reason = [...lines].reverse().find((line) => /^(fatal|error):/.test(line)) ?? lines.at(-1);
+    return reason ? `${repo} (${reason})` : repo;
+  });
+  return `Could not update ${parts.join(" and ")}`;
 }
 
 // A remembered choice, with anything the agent no longer offers dropped.
@@ -53,23 +77,28 @@ export const nextStep = (choice) => STEPS.find((step) => !choice[step]) ?? null;
 export const isReady = (choice) => nextStep(choice) === null;
 
 // `run` is the agent's own command from Herdr's program table (knownAgents()).
-export function buildArgv({ run, agent, model, effort }) {
-  if (agent === "claude") return [...run, "--model", model, "--effort", effort];
+// `addDir` lets claude read the brief folder without a permission prompt; codex ignores it.
+export function buildArgv({ run, agent, model, effort, addDir }) {
+  if (agent === "claude") {
+    return [...run, "--model", model, "--effort", effort, ...(addDir ? ["--add-dir", addDir] : [])];
+  }
   return [...run, "-m", model, "-c", `model_reasoning_effort="${effort}"`];
 }
 
 // The full instructions, saved to a file so multi-line text never has to be typed into the agent.
-export function buildBrief({ storyId, url, branch, interactive, planOnly, prompt, pullFailed }) {
+export function buildBrief({ storyId, url, branch, interactive, planOnly, prompt, pullFailed, agent, title, description }) {
   const lines = [`Shortcut story: sc-${storyId}${url ? ` (${url})` : ""}. The story is the source of truth.`];
   if (branch) lines.push(`Use the branch name ${branch}.`);
   lines.push(
-    "Base the work on the latest integration branch: create the worktree from integration with " +
-      "bin/create-worktree <branch>, run from axial-api.git or fe-app.git (whichever repo you choose). " +
-      "Only branch from something else if the Prompt section below says so.",
+    "Base the work on the latest integration branch: from the repo's checkout under the axial-main root " +
+      "(axial-api.git or fe-app.git, whichever repo you choose), run $AXIAL_ORCHESTRATION_ROOT/bin/create-worktree <branch>." +
+      (branch ? " <branch> is the branch name given above." : "") +
+      " Only branch from something else if the Prompt section below says so.",
   );
   if (pullFailed) {
     lines.push(
-      "Herdr could not update integration automatically. Run git fetch and base the worktree on origin/integration.",
+      "Herdr could not update integration automatically. Before running create-worktree, run git pull --ff-only " +
+        "in that checkout (it must be on integration); if that fails, stop and tell me.",
     );
   }
   if (planOnly) {
@@ -79,6 +108,8 @@ export function buildBrief({ storyId, url, branch, interactive, planOnly, prompt
     lines.push("Run to completion: do not ask questions. Decide, and log your assumptions in the PR description.");
   }
   let text = lines.join("\n");
+  const body = (description ?? "").trim();
+  if (agent === "codex" && (title || body)) text += `\n\n## Story\n# ${title ?? ""}\n\n${body}`;
   const extra = (prompt ?? "").replace(/^(\s*\n)+/, "").trimEnd();
   if (extra) text += `\n\n## Prompt\n${extra}`;
   return `${text}\n`;
