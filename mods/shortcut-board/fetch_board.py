@@ -7,6 +7,7 @@ Settings live in config.json next to this file (see config.example.json):
   team        the team's name, mention name or id (required)
   columns     workflow state names to show, in order (default: every state that isn't backlog)
   token_file  a file holding the API token, either bare or as SHORTCUT_API_TOKEN=... (optional)
+  implement_root  the axial-main folder where Implement starts its agent (default ~/source/axial-main)
   demo        true to show made-up stories without calling Shortcut
 The token comes from $SHORTCUT_API_TOKEN first, then token_file.
 Team, workflow, member and epic names are cached for a day.
@@ -296,6 +297,7 @@ def story(config, story_id):
         "id": s["id"],
         "name": s["name"],
         "url": s["app_url"],
+        "branch": s.get("formatted_vcs_branch_name"),
         "state": states.get(str(s.get("workflow_state_id"))),
         "type": s.get("story_type"),
         "epic": epic,
@@ -367,6 +369,7 @@ def demo_story(story_id):
     now = int(time.time())
     return {
         "id": sid, "name": title, "url": f"{DEMO_URL}{sid}", "state": state, "type": kind, "epic": epic,
+        "branch": "sc-%d-%s" % (sid, re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")),
         "owners": owners, "description": description,
         "relationships": [
             {"label": "Blocked by", "id": 1190, "name": "Rate-limit the public API", "type": "feature", "done": False},
@@ -387,6 +390,7 @@ def main():
             result = story(config, sys.argv[2])
         else:
             result = board(config)
+            result["implement_root"] = config.get("implement_root")
     except BoardError as error:
         result = {"error": str(error)}
     except urllib.error.HTTPError as error:

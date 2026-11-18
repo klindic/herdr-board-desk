@@ -2,5 +2,6 @@
   "team": "Your team name",
   "columns": ["Unstarted", "In Progress", "In Review", "Done"],
   "token_file": "~/.config/shortcut-token",
+  "implement_root": "~/source/axial-main",
   "demo": false
 }
