@@ -1,0 +1,386 @@
+// The Implement pane: pick an agent, model and effort, add an optional prompt, press Start.
+// Start brings integration up to date, writes a launch brief and opens the agent in a new tab.
+import { div, svg } from "gpui-kit";
+import { h_flex, v_flex, TextareaState, Textarea } from "gpui-base";
+import { theme, exec, home, run, focused, knownAgents, writeTextFile } from "herdr";
+import {
+  AGENTS,
+  BASE_REPOS,
+  STEPS,
+  buildArgv,
+  buildBrief,
+  buildTask,
+  choose,
+  isReady,
+  nextStep,
+  sanitize,
+} from "./implement.js";
+
+const LAST_KEY = "implement-last";
+const BRIEF_DIR = ".cache/herdr-implement";
+const GUTTER = 10;
+const STEP_TITLE = { agent: "Agent", model: "Model", effort: "Effort" };
+const stop = (_e, cx) => cx.stop_propagation();
+
+export class ImplementPane {
+  init() {
+    this.storyId = null;
+    this.choice = { agent: null, model: null, effort: null };
+    this.openStep = "agent";
+    this.planOnly = false;
+    this.starting = false;
+    this.error = null;
+    this.notice = null;
+    this.installed = {};
+    this.prompt = TextareaState.new({ placeholder: "Anything extra for the agent. Leave empty to skip.", rows: 5 });
+  }
+
+  isOpen(id) {
+    return this.storyId !== null && this.storyId === id;
+  }
+
+  open(id, cx) {
+    this.storyId = id;
+    let last = null;
+    try {
+      last = JSON.parse(localStorage.getItem(LAST_KEY) ?? "null");
+    } catch {}
+    this.choice = sanitize(last);
+    this.openStep = nextStep(this.choice);
+    this.planOnly = false;
+    this.starting = false;
+    this.error = null;
+    this.notice = null;
+    this.prompt.set_value("");
+    cx.spawn(async (cx) => {
+      try {
+        const list = await knownAgents();
+        this.installed = Object.fromEntries(list.map((a) => [a.key, a.installed]));
+      } catch {}
+      cx.notify();
+    });
+    cx.notify();
+  }
+
+  close() {
+    this.storyId = null;
+  }
+
+  pick(step, value, cx) {
+    this.choice = choose(this.choice, step, value);
+    this.openStep = nextStep(this.choice);
+    cx.notify();
+  }
+
+  options(step) {
+    if (step === "agent") return Object.entries(AGENTS).map(([id, agent]) => ({ id, label: agent.label }));
+    if (step === "model") return AGENTS[this.choice.agent].models;
+    return AGENTS[this.choice.agent].efforts.map((id) => ({ id, label: id }));
+  }
+
+  labelOf(step) {
+    return this.options(step).find((o) => o.id === this.choice[step])?.label ?? this.choice[step];
+  }
+
+  optionChip(view, step, option) {
+    const disabled = step === "agent" && this.installed[option.id] === false;
+    const label = disabled ? `${option.label} (not installed)` : option.label;
+    return view.chip(`impl-${step}-${option.id}`, label, this.choice[step] === option.id, (_e, cx) => {
+      cx.stop_propagation();
+      if (!disabled) this.pick(step, option.id, cx);
+    });
+  }
+
+  // One step at a time: a step shows once the one before it is chosen, and collapses to a chip when chosen.
+  stepper(view) {
+    const t = theme();
+    const rows = [];
+    for (const step of STEPS) {
+      const before = STEPS[STEPS.indexOf(step) - 1];
+      if (before && !this.choice[before]) break;
+      const value = this.choice[step];
+      const expanded = this.openStep === step || !value;
+      const chips = expanded
+        ? this.options(step).map((option) => this.optionChip(view, step, option))
+        : [
+            view.chip(`impl-${step}-chosen`, this.labelOf(step), true, (_e, cx) => {
+              cx.stop_propagation();
+              this.openStep = step;
+              cx.notify();
+            }),
+          ];
+      rows.push(
+        v_flex()
+          .id(`impl-step-${step}`)
+          .gap(8)
+          .child(div().text_size(12).text_color(t.dim).child(STEP_TITLE[step]))
+          .child(h_flex().gap(6).flex_wrap().children(chips)),
+      );
+    }
+    return v_flex().gap(16).children(rows);
+  }
+
+  toggles(view) {
+    const t = theme();
+    return v_flex()
+      .gap(10)
+      .child(div().text_size(12).text_color(t.dim).child("Mode"))
+      .child(
+        h_flex()
+          .gap(6)
+          .items_center()
+          .flex_wrap()
+          .child(view.chip("impl-interactive", "Interactive", true, stop))
+          .child(
+            h_flex()
+              .id("impl-run")
+              .h(26)
+              .px(12)
+              .gap(8)
+              .items_center()
+              .rounded_full()
+              .border(1)
+              .border_color(t.border)
+              .text_size(12.5)
+              .text_color(t.dim)
+              .child("Run to completion")
+              .child(
+                div().px(6).h(18).flex().items_center().rounded_full().bg(t.raised).text_size(11).child("coming soon"),
+              ),
+          ),
+      )
+      .child(
+        h_flex()
+          .gap(6)
+          .child(
+            view.chip("impl-plan", "Plan only, stop before coding", this.planOnly, (_e, cx) => {
+              cx.stop_propagation();
+              this.planOnly = !this.planOnly;
+              cx.notify();
+            }),
+          ),
+      );
+  }
+
+  promptBox() {
+    const t = theme();
+    return v_flex()
+      .gap(6)
+      .child(
+        h_flex()
+          .gap(8)
+          .items_center()
+          .child(div().text_size(13).font_semibold().text_color(t.foreground).child("Prompt"))
+          .child(div().text_size(12).text_color(t.dim).child("optional")),
+      )
+      .child(div().text_size(12).text_color(t.dim).child("Added to the end of the first message. Leave it empty to skip."))
+      .child(
+        Textarea.new(this.prompt)
+          .h(128)
+          .rounded(9)
+          .border_1()
+          .border_color(t.input)
+          .bg(t.background)
+          .text_size(12.8)
+          .text_color(t.foreground),
+      );
+  }
+
+  startButton(view, story) {
+    const t = theme();
+    const ready = isReady(this.choice) && Boolean(story) && !this.starting;
+    return div()
+      .id("impl-start")
+      .h(36)
+      .flex()
+      .items_center()
+      .justify_center()
+      .rounded(8)
+      .text_size(13.5)
+      .font_semibold()
+      .bg(ready ? t.accent : t.raised)
+      .text_color(ready ? t.background : t.dim)
+      .when(ready, (el) => el.cursor_pointer())
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        if (ready) this.start(story, view.root(), cx);
+      })
+      .child(this.starting ? "Starting…" : "Start");
+  }
+
+  // Brings both integration checkouts up to date, writes the launch brief, then opens the agent in a new tab.
+  start(story, root, cx) {
+    this.starting = true;
+    this.error = null;
+    this.notice = null;
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        const failed = [];
+        await Promise.all(
+          BASE_REPOS.map(async (repo) => {
+            try {
+              const r = await exec("git", ["pull", "--ff-only"], { cwd: `${root}/${repo}`, timeout: 120000 });
+              if (r.code !== 0) failed.push(repo);
+            } catch {
+              failed.push(repo);
+            }
+          }),
+        );
+        const agents = await knownAgents();
+        const entry = agents.find((a) => a.key === this.choice.agent);
+        if (!entry || !entry.installed) throw new Error(`${AGENTS[this.choice.agent].label} is not installed`);
+        const dir = `${home()}/${BRIEF_DIR}`;
+        await exec("mkdir", ["-p", dir]);
+        const briefPath = `${dir}/sc-${story.id}-${Date.now()}.md`;
+        const brief = buildBrief({
+          storyId: story.id,
+          url: story.url,
+          branch: story.branch,
+          interactive: true,
+          planOnly: this.planOnly,
+          prompt: this.prompt.value(),
+          pullFailed: failed.length > 0,
+        });
+        await writeTextFile(briefPath, brief, null);
+        run("tab.new", {
+          name: `sc-${story.id}`,
+          space: focused()?.space,
+          folder: root,
+          argv: buildArgv({ run: entry.run, ...this.choice }),
+          task: buildTask({ agent: this.choice.agent, storyId: story.id, url: story.url, briefPath }),
+          focus: true,
+        });
+        try {
+          localStorage.setItem(LAST_KEY, JSON.stringify(this.choice));
+        } catch {}
+        this.notice = failed.length
+          ? `Started. Could not update ${failed.join(" and ")}; the agent was told to fetch.`
+          : `Started sc-${story.id} in a new tab.`;
+      } catch (error) {
+        this.error = String(error?.message ?? error);
+      } finally {
+        this.starting = false;
+        cx.notify();
+      }
+    });
+  }
+
+  render(view) {
+    const t = theme();
+    const id = this.storyId;
+    const entry = view.details[id] ?? {};
+    const story = entry.data;
+    const found = view.findCard(id);
+    const name = story?.name ?? found?.card.name ?? `sc-${id}`;
+    const state = story?.state ?? found?.column;
+    const branch = story?.branch;
+
+    const header = h_flex()
+      .h(54)
+      .flex_none()
+      .px(18)
+      .gap(10)
+      .items_center()
+      .border_b(1)
+      .border_color(t.border)
+      .text_size(12.5)
+      .child(div().flex_none().text_color(t.ansi4).child(`sc-${id}`))
+      .when(Boolean(state), (el) =>
+        el.child(
+          h_flex()
+            .gap(6)
+            .items_center()
+            .text_color(t.muted)
+            .child(div().size(7).rounded_full().bg(view.stateColor(state)))
+            .child(state),
+        ),
+      )
+      .child(div().flex_1())
+      .when(Boolean(entry.loading), (el) =>
+        el.child(svg("mods/workspace-chrome/spinner.svg").size(13).text_color(t.dim).spin(900)),
+      )
+      .child(
+        div()
+          .id("impl-close")
+          .size(26)
+          .flex_none()
+          .flex()
+          .items_center()
+          .justify_center()
+          .rounded(6)
+          .cursor_pointer()
+          .text_color(t.muted)
+          .hover((s) => s.bg(t.hover).text_color(t.foreground))
+          .tooltip("Back to the story")
+          .on_click((_e, cx) => {
+            cx.stop_propagation();
+            this.close();
+            cx.notify();
+          })
+          .child(svg("mods/pane/close.svg").size(14)),
+      );
+
+    const body = v_flex()
+      .id(`impl-content-${id}`)
+      .pl(22)
+      .pr(22 - GUTTER)
+      .pt(20)
+      .pb(28)
+      .gap(22)
+      .child(
+        v_flex()
+          .gap(6)
+          .child(div().text_size(12).text_color(t.dim).child("Implement"))
+          .child(div().text_size(18).font_semibold().text_color(t.foreground).whitespace_normal().child(name)),
+      )
+      .child(this.stepper(view))
+      .when(this.choice.agent === "codex", (el) =>
+        el.child(
+          div()
+            .text_size(12)
+            .text_color(t.dim)
+            .whitespace_normal()
+            .child(
+              "Codex does not have the Axial skills yet, so it will not use implement-ticket. " +
+                "It works from the ticket and your prompt.",
+            ),
+        ),
+      )
+      .when(Boolean(branch), (el) =>
+        el.child(
+          v_flex()
+            .gap(6)
+            .child(div().text_size(12).text_color(t.dim).child("Branch"))
+            .child(div().text_size(12.5).text_color(t.foreground).whitespace_normal().child(branch)),
+        ),
+      )
+      .child(this.toggles(view))
+      .child(this.promptBox());
+
+    const footer = v_flex()
+      .flex_none()
+      .p(16)
+      .gap(8)
+      .border_t(1)
+      .border_color(t.border)
+      .when(Boolean(this.error), (el) => el.child(div().text_size(12.5).text_color(t.blocked).whitespace_normal().child(this.error)))
+      .when(Boolean(this.notice), (el) => el.child(div().text_size(12.5).text_color(t.muted).whitespace_normal().child(this.notice)))
+      .child(this.startButton(view, story));
+
+    return v_flex()
+      .id("implement")
+      .flex_1()
+      .min_w(0)
+      .h_full()
+      .border(1)
+      .border_color(t.border)
+      .rounded(10)
+      .overflow_hidden()
+      .bg(t.background)
+      .on_click(stop)
+      .child(header)
+      .child(view.scrollArea("implement", body, GUTTER))
+      .child(footer);
+  }
+}
