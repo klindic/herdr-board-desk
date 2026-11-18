@@ -18,17 +18,17 @@ An Implement button shows on any board card or open story where `mine` is true. 
 4. Toggles:
    - Interactive (on by default) or Run to completion. Run to completion is disabled with a "coming soon" badge until implement-ticket has a real unattended mode.
    - Plan only, stop before coding (off by default).
-5. Notes: an optional multi-line box for extra instructions.
+5. Optional prompt: a multi-line text area titled "Prompt (optional)", with placeholder text saying it can be left empty and is added to the end of the first message.
 6. Start button, disabled until agent, model and effort are chosen.
 
-If Codex is picked, an inline note says: the Axial skills (including implement-ticket) are Claude-only for now, so Codex works from the ticket and your notes without that workflow.
+If Codex is picked, an inline note says: the Axial skills (including implement-ticket) are Claude-only for now, so Codex works from the ticket and your optional prompt without that workflow.
 
 ## What Start does
 
 Calls `run("tab.new", { name, folder, argv, task })` with focus on the new tab. Nothing is written by an agent before launch; the first message is a template.
 
 - argv: the agent's command with model and effort flags.
-- folder: the axial-main root (to confirm, see investigation).
+- folder: the axial-main root, always. The repo is chosen by the agent, so the tile does not live under axial-api or fe-app.
 - name: the story id and a short title.
 
 First message for Claude:
@@ -38,7 +38,7 @@ First message for Claude:
 Use the branch name <formatted_vcs_branch_name>.
 [Plan only] Stop after the implementation plan is written and wait for me.
 [Run to completion] Do not ask questions; decide, and log assumptions.
-[Notes] <your notes, verbatim>
+[Optional prompt] a blank line, then your text verbatim (omitted when empty)
 ```
 
 For Codex the first line is replaced by "Implement Shortcut story sc-<id> (<url>)", since the skill is not available.

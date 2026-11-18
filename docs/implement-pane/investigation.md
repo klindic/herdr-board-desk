@@ -21,7 +21,7 @@ A ticket on the Shortcut board that is assigned to you gets an Implement button.
 Local agent commands:
 
 - Claude: `claude --model <model> --effort <level> "<first message>"`. `claude --help` confirms `--model` and `--effort`.
-- Codex: `codex -m <model> -c model_reasoning_effort="<level>"`. `programs.json` currently runs Codex with `--no-daemon --dangerously-bypass-approvals-and-sandbox`; reuse that `run` array and append flags. To verify: the exact config key for Codex reasoning effort.
+- Codex: `codex -m <model> -c model_reasoning_effort="<level>"`. `programs.json` currently runs Codex with `--no-daemon --dangerously-bypass-approvals-and-sandbox`; reuse that `run` array and append flags. Confirmed from `~/.codex/config.toml`: the keys are `model` and `model_reasoning_effort`, so `-m <model> -c model_reasoning_effort="<level>"` works the same way as Claude's two flags.
 
 ## The skills
 
@@ -38,6 +38,6 @@ Local agent commands:
 
 ## Open questions
 
-- Which folder the tile starts in. Proposal: the axial-main root, so both repos are reachable. Confirm that implement-ticket's worktree setup works from there.
-- Whether `tab.new`'s `task` is typed into the agent after start, or passed as the initial argument. Either works; it decides whether the first message appears in shell history.
+- Resolved: the tile starts in the axial-main root (`tab.new` takes a `folder`). The repo is not known up front, and the agent decides it, so no single repo folder fits. Still to confirm that implement-ticket's worktree setup works from there. Work started outside the board still uses the normal repo spaces.
+- Resolved: the notes box is a multi-line text area. Still open: whether `tab.new`'s `task` is typed into the agent after start, or passed as the initial argument. Either works; it decides whether the first message appears in shell history.
 - Valid model names per agent and how to keep the list current. Proposal: a small static list in the mod's config.
