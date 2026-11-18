@@ -1,7 +1,7 @@
 // The Implement pane: pick an agent, model and effort, add an optional prompt, press Start.
 // Start brings integration up to date, writes a launch brief and opens the agent in a new tab.
 import { div, svg } from "gpui-kit";
-import { h_flex, v_flex, TextareaState, Textarea } from "gpui-base";
+import { h_flex, v_flex, TextareaState, Textarea, InputState, Input } from "gpui-base";
 import { theme, exec, home, run, focused, knownAgents, writeTextFile } from "herdr";
 import {
   AGENTS,
@@ -22,6 +22,7 @@ const BRIEF_DIR = ".cache/herdr-implement";
 const GUTTER = 10;
 const STEP_TITLE = { agent: "Agent", model: "Model", effort: "Effort" };
 const stop = (_e, cx) => cx.stop_propagation();
+const icon = (name) => `mods/shortcut-board/icons/${name}.svg`;
 
 export class ImplementPane {
   init() {
@@ -35,6 +36,11 @@ export class ImplementPane {
     this.notice = null;
     this.warning = null;
     this.installed = {};
+    this.branchInput = InputState.new({ placeholder: "branch-name" });
+    this.branchInput.on("submit", (_e, cx) => this.saveBranch(cx));
+    this.branchEditing = false;
+    this.branchOverride = null;
+    this.branchError = null;
     this.prompt = TextareaState.new({ placeholder: "Anything extra for the agent. Leave empty to skip.", rows: 5 });
     this.prompt.on("change", (_e, cx) => {
       if (!this.launched) return;
@@ -61,6 +67,9 @@ export class ImplementPane {
     this.notice = null;
     this.warning = null;
     this.prompt.set_value("");
+    this.branchEditing = false;
+    this.branchOverride = null;
+    this.branchError = null;
     this.launched = false;
     cx.spawn(async (cx) => {
       try {
@@ -77,6 +86,40 @@ export class ImplementPane {
 
   close() {
     this.storyId = null;
+  }
+
+  // The branch the agent will be told to use: your edit, else Shortcut's suggestion made safe for create-worktree.
+  effectiveBranch(story) {
+    return this.branchOverride ?? normalizeBranch(story?.branch);
+  }
+
+  startBranchEdit(story, cx) {
+    this.branchEditing = true;
+    this.branchError = null;
+    this.branchInput.set_value(this.effectiveBranch(story) ?? "");
+    this.branchInput.focus();
+    cx.notify();
+  }
+
+  cancelBranchEdit(cx) {
+    this.branchEditing = false;
+    this.branchError = null;
+    cx.notify();
+  }
+
+  // An empty box goes back to Shortcut's suggestion. Anything else must already be a valid name; it is never rewritten.
+  saveBranch(cx) {
+    const value = this.branchInput.value().trim();
+    if (value && normalizeBranch(value) !== value) {
+      this.branchError = "Use letters, digits, - and _ only, starting with a letter.";
+      cx.notify();
+      return;
+    }
+    this.branchOverride = value || null;
+    this.branchEditing = false;
+    this.branchError = null;
+    this.launched = false;
+    cx.notify();
   }
 
   pick(step, value, cx) {
@@ -177,6 +220,78 @@ export class ImplementPane {
       );
   }
 
+  iconButton(id, name, tooltip, action) {
+    const t = theme();
+    return div()
+      .id(id)
+      .size(26)
+      .flex_none()
+      .flex()
+      .items_center()
+      .justify_center()
+      .rounded(6)
+      .cursor_pointer()
+      .text_color(t.muted)
+      .hover((s) => s.bg(t.hover).text_color(t.foreground))
+      .tooltip(tooltip)
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        action(cx);
+      })
+      .child(svg(name).size(14));
+  }
+
+  branchRow(view, story, branch) {
+    const t = theme();
+    const label = div().text_size(12).text_color(t.dim).child("Branch");
+    if (this.branchEditing) {
+      return v_flex()
+        .gap(6)
+        .child(label)
+        .child(
+          h_flex()
+            .gap(6)
+            .items_center()
+            .child(
+              Input.new(this.branchInput)
+                .flex_1()
+                .min_w(0)
+                .h(32)
+                .px(10)
+                .rounded(8)
+                .border_1()
+                .border_color(t.accent)
+                .bg(t.background)
+                .text_size(12.5)
+                .text_color(t.foreground),
+            )
+            .child(this.iconButton("impl-branch-save", icon("check"), "Use this branch", (cx) => this.saveBranch(cx)))
+            .child(this.iconButton("impl-branch-cancel", "mods/pane/close.svg", "Cancel", (cx) => this.cancelBranchEdit(cx))),
+        )
+        .when(Boolean(this.branchError), (el) =>
+          el.child(div().text_size(12).text_color(t.blocked).whitespace_normal().child(this.branchError)),
+        );
+    }
+    return v_flex()
+      .gap(6)
+      .child(label)
+      .child(
+        h_flex()
+          .gap(8)
+          .items_center()
+          .child(
+            div()
+              .flex_1()
+              .min_w(0)
+              .text_size(12.5)
+              .text_color(branch ? t.foreground : t.dim)
+              .whitespace_normal()
+              .child(branch ?? "No suggested branch"),
+          )
+          .child(this.iconButton("impl-branch-edit", icon("pencil"), "Edit the branch name", (cx) => this.startBranchEdit(story, cx))),
+      );
+  }
+
   promptBox() {
     const t = theme();
     return v_flex()
@@ -233,6 +348,7 @@ export class ImplementPane {
     const choice = { ...this.choice };
     const planOnly = this.planOnly;
     const prompt = this.prompt.value();
+    const branch = this.effectiveBranch(story);
     const storyId = story.id;
     const same = () => this.storyId === storyId;
     const set = (fields) => {
@@ -269,7 +385,7 @@ export class ImplementPane {
         const brief = buildBrief({
           storyId,
           url: story.url,
-          branch: normalizeBranch(story.branch),
+          branch,
           interactive: true,
           planOnly,
           prompt,
@@ -314,7 +430,7 @@ export class ImplementPane {
     const found = view.findCard(id);
     const name = story?.name ?? found?.card.name ?? `sc-${id}`;
     const state = story?.state ?? found?.column;
-    const branch = story?.branch;
+    const branch = this.effectiveBranch(story);
 
     const header = h_flex()
       .h(54)
@@ -387,14 +503,7 @@ export class ImplementPane {
             ),
         ),
       )
-      .when(Boolean(branch), (el) =>
-        el.child(
-          v_flex()
-            .gap(6)
-            .child(div().text_size(12).text_color(t.dim).child("Branch"))
-            .child(div().text_size(12.5).text_color(t.foreground).whitespace_normal().child(branch)),
-        ),
-      )
+      .child(this.branchRow(view, story, branch))
       .child(this.toggles(view))
       .child(this.promptBox());
 
