@@ -5,9 +5,10 @@ A [Herdr](https://herdr.dev) layout for working with coding agents and a Shortcu
 ![Board Desk](preview.png)
 
 - **Terminals / Board switch** left of the tab bar: swap the main area between your terminals and your Shortcut team's kanban board.
-- **Story pane**: click a card to read its description, relationships and comments next to the board (read-only).
+- **Markdown view**: a third switch beside Terminals and Board. Drop `.md` files on the view or on the Markdown switch to open them (several stay open as tabs), then flip between the rendered Preview and the raw Text. Relative links to other `.md` files open in the viewer, and the reload button re-reads the file.
+- **Story pane**: click a card to read its description, pull requests (clickable, with state, review and diff size), relationships and comments next to the board (read-only).
 - **Asks**: a right-panel view that collects every agent waiting on you (approvals, questions, replies). Answer from the card, jump to the terminal or dismiss it; a macOS notification and the rail badge tell you when a new one arrives.
-- **Implement**: on a story assigned to you, an Implement button opens a pane to choose Claude or Codex, the model, its version and the effort, then starts that agent in a new tab to implement the story.
+- **Implement**: on a story assigned to you, an Implement button (on the card when the story has no relationships, and always in the story header) opens a pane to choose Claude or Codex, the model, its version and the effort, then starts that agent in a new tab to implement the story.
 - **Usage panel**: CPU, RAM and GPU gauges and Claude and Codex 5-hour and weekly plan limits at the bottom of the sidebar.
 - **Right rail**: your open GitHub pull requests and your past Claude Code and Codex sessions for the focused repo; child terminals get their own pane.
 
@@ -29,13 +30,13 @@ Or by hand: copy `layouts/board-desk.json` into `~/.config/herdr-app/layouts/` a
 
 ## What it touches
 
-Before installing, know that these mods run programs and reach the network: the board calls the Shortcut API; the usage panel calls Anthropic's and OpenAI's usage endpoints with your existing Claude Code and Codex tokens (read-only, never refreshed); Pull requests runs `gh`; Implement runs `git pull --ff-only` in your two integration checkouts, writes launch briefs to `~/.cache/herdr-implement/`, reads `~/.codex/models_cache.json` and starts Claude or Codex; Asks reads agent terminal screens with `hc read`, sends keystrokes with `hc keys` and `hc send`, and posts macOS notifications with `osascript`; Sessions reads `~/.claude` and `~/.codex` and can move a session file to the Trash.
+Before installing, know that these mods run programs and reach the network: the board calls the Shortcut API; the usage panel calls Anthropic's and OpenAI's usage endpoints with your existing Claude Code and Codex tokens (read-only, never refreshed); Pull requests runs `gh`, and the story pane runs `gh pr view` for each pull request linked to the story; Implement runs `git pull --ff-only` in your two integration checkouts, writes launch briefs to `~/.cache/herdr-implement/`, reads `~/.codex/models_cache.json` and starts Claude or Codex; Asks reads agent terminal screens with `hc read`, sends keystrokes with `hc keys` and `hc send`, and posts macOS notifications with `osascript`; the Markdown view reads the files you drop on it; Sessions reads `~/.claude` and `~/.codex` and can move a session file to the Trash.
 
 `RECIPE.md` describes the whole layout in enough detail to rebuild it from scratch.
 
 ## Development
 
-`npm test` runs the node tests for the Implement logic and the Asks screen parser and the Python test for the fetch script. The mods themselves only run inside Herdr; `herdr-app check mods/shortcut-board` loads one once and reports problems.
+`npm test` runs the node tests for the Implement logic, the Asks screen parser and the Markdown view's path helpers and the Python test for the fetch script. The mods themselves only run inside Herdr; `herdr-app check mods/shortcut-board` loads one once and reports problems.
 
 ## License
 
