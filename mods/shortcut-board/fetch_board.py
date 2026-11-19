@@ -16,6 +16,8 @@ Team, workflow, member and epic names are cached for a day.
 import json
 import os
 import re
+import shutil
+import subprocess
 import sys
 import time
 import urllib.error
@@ -199,6 +201,7 @@ def board(config):
                 "blocker": bool(s.get("blocker")),
                 "moved": epoch(s.get("moved_at") or s.get("updated_at")),
                 "prs": prs,
+                "linked": bool(s.get("story_links")),
             })
         out.append({**column, "cards": cards})
     return {"team": team["name"], "columns": out, "at": int(time.time())}
@@ -255,6 +258,58 @@ def story_links(api, s):
     return sorted(result, key=lambda r: LINK_ORDER.get(r["label"], 9))
 
 
+def checks_state(rollup):
+    states = set()
+    for check in rollup or []:
+        if check.get("status") and check["status"] != "COMPLETED":
+            states.add("PENDING")
+        else:
+            states.add((check.get("conclusion") or check.get("state") or "").upper())
+    if states & {"FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "STARTUP_FAILURE"}:
+        return "failure"
+    if states & {"PENDING", "EXPECTED", ""}:
+        return "pending" if states else None
+    return "success" if states else None
+
+
+def pull_request(url):
+    """One PR's details from `gh`; just its number and link when gh is missing or fails."""
+    match = PR_URL.search(url)
+    basic = {
+        "number": int(match.group(3)), "repo": f"{match.group(1)}/{match.group(2)}", "url": url,
+        "title": None, "state": None, "review": None, "additions": None, "deletions": None, "checks": None,
+    }
+    gh = shutil.which("gh") or "/opt/homebrew/bin/gh"
+    try:
+        out = subprocess.run(
+            [gh, "pr", "view", url, "--json", "title,state,isDraft,reviewDecision,additions,deletions,statusCheckRollup"],
+            capture_output=True, text=True, timeout=20, check=True,
+        ).stdout
+        data = json.loads(out)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return basic
+    return {
+        **basic,
+        "title": data.get("title"),
+        "state": "draft" if data.get("isDraft") and data.get("state") == "OPEN" else (data.get("state") or "").lower() or None,
+        "review": data.get("reviewDecision") or None,
+        "additions": data.get("additions"),
+        "deletions": data.get("deletions"),
+        "checks": checks_state(data.get("statusCheckRollup")),
+    }
+
+
+def pull_requests(s):
+    urls = []
+    for link in s.get("external_links") or []:
+        if PR_URL.search(link) and link not in urls:
+            urls.append(link)
+    if not urls:
+        return []
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        return list(pool.map(pull_request, urls))
+
+
 def story(config, story_id):
     if config.get("demo"):
         return demo_story(int(story_id))
@@ -305,6 +360,7 @@ def story(config, story_id):
         "description": link_story_refs(s.get("description"), workspace),
         "comments": comments,
         "relationships": relationships,
+        "pull_requests": pull_requests(s),
         "at": int(time.time()),
     }
 
@@ -371,6 +427,10 @@ def demo_story(story_id):
         "id": sid, "name": title, "url": f"{DEMO_URL}{sid}", "state": state, "type": kind, "epic": epic,
         "branch": "sc-%d-%s" % (sid, re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")),
         "owners": owners, "description": description,
+        "pull_requests": [
+            {"number": 1725, "repo": "example/web", "url": "https://github.com", "title": "Retry webhook deliveries", "state": "merged", "review": "APPROVED", "additions": 1949, "deletions": 14, "checks": "success"},
+            {"number": 1821, "repo": "example/web", "url": "https://github.com", "title": "Backoff tuning", "state": "open", "review": "REVIEW_REQUIRED", "additions": 1141, "deletions": 20, "checks": "success"},
+        ],
         "relationships": [
             {"label": "Blocked by", "id": 1190, "name": "Rate-limit the public API", "type": "feature", "done": False},
             {"label": "Blocks", "id": 1201, "name": "Export the audit log as CSV", "type": "feature", "done": False},

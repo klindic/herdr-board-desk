@@ -45,6 +45,15 @@ const LINK_STYLE = {
   "Duplicated by": { icon: "copy", color: (t) => t.muted },
   "Relates to": { icon: "link", color: (t) => t.muted },
 };
+// Pull request state badges: label, and the theme colors for the badge text and its fill.
+const PR_STATE = {
+  open: { label: "Open", color: (t) => t.done },
+  draft: { label: "Draft", color: (t) => t.muted },
+  merged: { label: "Merged", color: (t) => t.ansi5 },
+  closed: { label: "Closed", color: (t) => t.blocked },
+};
+const PR_REVIEW = { APPROVED: "Approved", CHANGES_REQUESTED: "Changes requested", REVIEW_REQUIRED: "Review required" };
+const CHECK_COLOR = { success: (t) => t.done, failure: (t) => t.blocked, pending: (t) => t.working };
 const icon = (name) => `mods/shortcut-board/icons/${name}.svg`;
 // A selected card is filled with its border color at this alpha.
 const SELECTED_ALPHA = "2e";
@@ -238,7 +247,7 @@ export default class ShortcutBoard extends View {
         .child(div().size(7).flex_none().rounded_full().bg(t.blocked))
         .child(c.blocked ? "Blocked" : "Blocking another story")))
       .child(h_flex().gap(6).flex_wrap()
-        .when(c.mine, (el) => el.child(this.implementButton(`sc-${c.id}-implement`, c.id)))
+        .when(c.mine && !c.linked, (el) => el.child(this.implementButton(`sc-${c.id}-implement`, c.id)))
         .child(this.linkButton(`sc-${c.id}-open`, "Shortcut", c.url))
         .children(c.prs.map((p) => this.linkButton(`sc-${c.id}-pr-${p.repo}-${p.number}`, `PR #${p.number}`, p.url))));
   }
@@ -361,6 +370,40 @@ export default class ShortcutBoard extends View {
       .children(list.map((r) => this.relationship(r)));
   }
 
+  pullRequest(p) {
+    const t = theme();
+    const state = PR_STATE[p.state];
+    const tone = state ? state.color(t) : t.muted;
+    const review = PR_REVIEW[p.review];
+    const repo = p.repo.split("/").pop();
+    return v_flex().id(`pr-${p.repo}-${p.number}`).px(6).py(8).gap(6).rounded(6).cursor_pointer()
+      .hover((s) => s.bg(t.hover)).tooltip(`Open #${p.number} on GitHub`)
+      .on_click((_e, cx) => { cx.stop_propagation(); openUrl(p.url); })
+      .child(h_flex().gap(9).items_center()
+        .child(svg("mods/right-rail/git-pull-request.svg").size(15).flex_none().text_color(tone))
+        .child(h_flex().flex_1().min_w(0).gap(5).text_size(13)
+          .child(div().flex_none().text_color(t.foreground).child(`#${p.number}`))
+          .child(div().flex_1().min_w(0).truncate().text_color(t.ansi4).child(p.title ?? "Pull request")))
+        .when(Boolean(p.checks), (el) => el.child(svg(icon("check")).size(14).flex_none().text_color(CHECK_COLOR[p.checks](t)))))
+      .child(h_flex().pl(24).gap(8).items_center().flex_wrap().text_size(12).text_color(t.muted)
+        .when(Boolean(state), (el) => el.child(div().h(20).px(7).flex().items_center().rounded(5).text_color(tone)
+          .bg(tone + SELECTED_ALPHA).child(state.label)))
+        .child(div().child(repo))
+        .when(Boolean(review), (el) => el.child(div().child(review)))
+        .when(p.additions != null, (el) => el.child(div().text_color(t.done).child(`+${p.additions}`)))
+        .when(p.deletions != null, (el) => el.child(div().text_color(t.blocked).child(`-${p.deletions}`))));
+  }
+
+  pullRequests(list) {
+    const t = theme();
+    return v_flex().gap(4).pt(16).border_t(1).border_color(t.border)
+      .child(h_flex().gap(8).items_center().pb(4)
+        .child(div().text_size(14).font_semibold().text_color(t.foreground).child("Pull Requests"))
+        .child(div().text_size(12.5).text_color(t.dim).child(String(list.length))))
+      .when(list.length === 0, (el) => el.child(div().text_size(12.5).text_color(t.dim).child("No pull requests")))
+      .children(list.map((p) => this.pullRequest(p)));
+  }
+
   detailPanel() {
     const t = theme();
     const id = this.selected;
@@ -398,6 +441,7 @@ export default class ShortcutBoard extends View {
         .child(story.description?.trim()
           ? this.markdown(`desc-${id}`, story.description)
           : div().text_size(13).text_color(t.dim).child("No description"))
+        .child(this.pullRequests(story.pull_requests ?? []))
         .child(this.relationships(story.relationships ?? []))
         .child(v_flex().gap(10).pt(16).border_t(1).border_color(t.border)
           .child(h_flex().gap(8).items_center()
