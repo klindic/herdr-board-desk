@@ -3,16 +3,30 @@
 
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { theme, run, layout, window, settings } from "herdr";
+import { theme, run, layout, window, settings, setShared, notify } from "herdr";
 
 const STACK = "main-view";
 const BLOCK_ID = "view-switch";
-const WIDTH = 190;
+const WIDTH = 312;
 
 const VIEWS = [
   { id: "main", label: "Terminals", icon: "mods/view-switch/terminal.svg" },
   { id: "board", label: "Board", icon: "mods/view-switch/board.svg" },
+  { id: "markdown", label: "Markdown", icon: "mods/view-switch/markdown.svg" },
 ];
+
+const isMarkdown = (path) => /\.(md|markdown|mdx)$/i.test(path);
+
+// Markdown files dropped on the switch open in the Markdown view, which picks them up from shared state.
+function openMarkdown(paths) {
+  const files = paths.filter(isMarkdown);
+  if (files.length === 0) {
+    notify({ title: "Markdown viewer", body: "Only .md, .markdown and .mdx files open here", level: "warning" });
+    return;
+  }
+  setShared("markdown.open", { paths: files, at: Date.now() });
+  run("layout.select", { stack: STACK, child: "markdown" });
+}
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -57,11 +71,12 @@ export default class ViewSwitch extends View {
         .when(!on, (el) => el.hover((s) => s.text_color(t.foreground)))
         .on_mouse_down("left", stop)
         .on_click(() => { if (!on) run("layout.select", { stack: STACK, child: v.id }); })
+        .on_drop((event) => openMarkdown(event.paths ?? []))
         .child(svg(v.icon).size(14))
         .child(v.label);
     };
 
-    return h_flex().size_full().bg(t.chrome).border_b(1).border_color(t.border).pl(pad).gap(10).items_center()
+    return h_flex().id("view-switch-root").size_full().on_drop((event) => openMarkdown(event.paths ?? [])).bg(t.chrome).border_b(1).border_color(t.border).pl(pad).gap(10).items_center()
       .child(h_flex().h(31).p(2).gap(2).items_center().rounded(8).border(1).border_color(t.border).bg(t.chrome)
         .children(VIEWS.map(segment)))
       .child(div().w(1).h(18).bg(t.border));

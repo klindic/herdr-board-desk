@@ -82,7 +82,7 @@
                 "mod": "view-switch"
               },
               "size": {
-                "px": 190
+                "px": 312
               },
               "window_drag": true
             },
@@ -155,6 +155,13 @@
                       "type": "block",
                       "content": {
                         "mod": "shortcut-board"
+                      }
+                    },
+                    {
+                      "id": "markdown",
+                      "type": "block",
+                      "content": {
+                        "mod": "markdown-viewer"
                       }
                     }
                   ],
